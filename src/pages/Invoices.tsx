@@ -24,6 +24,7 @@ export function Invoices() {
   const [exporting, setExporting] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [showFilters, setShowFilters] = useState(true);
+  const [currentBatchId, setCurrentBatchId] = useState<string | null>(null);
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({
     approvalStatuses: [], validationStatuses: [], paymentStatuses: [],
     processStates: [], poTypes: [], agingBuckets: []
@@ -47,10 +48,30 @@ export function Invoices() {
     maxDaysOld: searchParams.get('maxDays') || '',
   });
 
-  // Load filter options on mount
+  // Get current batch ID on mount
+  useEffect(() => {
+    async function getCurrentBatch() {
+      const { data } = await supabase
+        .from('import_batches')
+        .select('id')
+        .eq('is_current', true)
+        .single();
+      if (data) {
+        setCurrentBatchId(data.id);
+      }
+    }
+    getCurrentBatch();
+  }, []);
+
+  // Load filter options from current batch only
   useEffect(() => {
     async function loadFilterOptions() {
-      const { data } = await supabase.from('invoices').select('approval_status, validation_status, payment_status, overall_process_state, po_type, aging_bucket');
+      if (!currentBatchId) return;
+      
+      const { data } = await supabase
+        .from('invoices')
+        .select('approval_status, validation_status, payment_status, overall_process_state, po_type, aging_bucket')
+        .eq('import_batch_id', currentBatchId);
       if (data) {
         const unique = (arr: (string | null)[]) => [...new Set(arr.filter(Boolean))].sort() as string[];
         setFilterOptions({
@@ -64,11 +85,16 @@ export function Invoices() {
       }
     }
     loadFilterOptions();
-  }, []);
+  }, [currentBatchId]);
 
-  // Build query with filters
+  // Build query with filters - always filter by current batch
   const buildQuery = (forExport = false) => {
     let query = supabase.from('invoices').select('*', { count: 'exact' });
+    
+    // Always filter by current batch
+    if (currentBatchId) {
+      query = query.eq('import_batch_id', currentBatchId);
+    }
 
     if (filters.search) {
       query = query.or(`supplier.ilike.%${filters.search}%,invoice_number.ilike.%${filters.search}%,invoice_id.ilike.%${filters.search}%`);
@@ -96,9 +122,15 @@ export function Invoices() {
     return query;
   };
 
-  // Fetch invoices when filters or page change
+  // Fetch invoices when filters, page, or batch change
   useEffect(() => {
     async function fetchInvoices() {
+      if (!currentBatchId) {
+        setInvoices([]);
+        setTotalCount(0);
+        setLoading(false);
+        return;
+      }
       setLoading(true);
       const { data, count, error } = await buildQuery();
       if (!error) {
@@ -108,7 +140,7 @@ export function Invoices() {
       setLoading(false);
     }
     fetchInvoices();
-  }, [filters, page]);
+  }, [filters, page, currentBatchId]);
 
   const totalPages = Math.ceil(totalCount / 25);
 

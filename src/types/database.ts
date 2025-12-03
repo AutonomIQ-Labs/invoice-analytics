@@ -34,5 +34,19 @@ export interface ImportBatch {
   skipped_count: number;
   imported_at: string;
   imported_by: string | null;
+  is_current: boolean;
+}
+
+export interface BatchComparison {
+  currentBatch: ImportBatch;
+  previousBatch: ImportBatch | null;
+  newInvoices: Invoice[];
+  resolvedInvoices: Invoice[];
+  unchangedInvoices: Invoice[];
+  statusChanges: {
+    invoice: Invoice;
+    previousState: string;
+    currentState: string;
+  }[];
 }
 

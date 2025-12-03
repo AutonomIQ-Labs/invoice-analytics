@@ -9,12 +9,14 @@ import { VendorTable } from '../components/dashboard/VendorTable';
 import { StuckInvoicesPanel } from '../components/dashboard/StuckInvoicesPanel';
 import { TrendChart } from '../components/dashboard/TrendChart';
 import { PoBreakdownChart } from '../components/dashboard/PoBreakdownChart';
+import { BatchComparisonPanel } from '../components/dashboard/BatchComparisonPanel';
 
 const formatCurrency = (value: number) => new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD', notation: 'compact', maximumFractionDigits: 1 }).format(value);
+const formatDate = (dateStr: string) => new Date(dateStr).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
 export function Dashboard() {
   const navigate = useNavigate();
-  const { stats, loading: statsLoading } = useDashboardStats();
+  const { stats, loading: statsLoading, currentBatch } = useDashboardStats();
   const { batches } = useImportBatches();
   const { invoices } = useInvoices({ pageSize: 1000 });
   const [agingViewMode, setAgingViewMode] = useState<'count' | 'value'>('count');
@@ -40,7 +42,12 @@ export function Dashboard() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">Dashboard</h1>
-          <p className="text-slate-400 mt-1">SKG Payables Invoice Analytics</p>
+          <p className="text-slate-400 mt-1">
+            SKG Payables Invoice Analytics
+            {currentBatch && (
+              <span className="ml-2 text-sky-400">· Data from {formatDate(currentBatch.imported_at)}</span>
+            )}
+          </p>
         </div>
         <button onClick={() => navigate('/import')} className="btn-primary flex items-center gap-2">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -57,6 +64,9 @@ export function Dashboard() {
         <StatCard title="Requires Investigation" value={stats.requiresInvestigation.count.toLocaleString()} subtitle={formatCurrency(stats.requiresInvestigation.value)} icon="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" color="red" />
         <StatCard title="Average Age" value={`${Math.round(stats.averageDaysOld)} days`} subtitle="Across all invoices" icon="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" color="yellow" />
       </div>
+
+      {/* Batch Comparison Panel - Shows changes from previous import */}
+      <BatchComparisonPanel />
 
       {/* Charts Row 1 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

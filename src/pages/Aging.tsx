@@ -42,7 +42,25 @@ export function Aging() {
   useEffect(() => {
     async function fetchData() {
       setLoading(true);
-      const { data, error } = await supabase.from('invoices').select('*');
+      
+      // Get current batch first
+      const { data: batchData } = await supabase
+        .from('import_batches')
+        .select('id')
+        .eq('is_current', true)
+        .single();
+      
+      if (!batchData) {
+        console.error('No current batch found');
+        setLoading(false);
+        return;
+      }
+
+      // Fetch only invoices from current batch
+      const { data, error } = await supabase
+        .from('invoices')
+        .select('*')
+        .eq('import_batch_id', batchData.id);
       
       if (error) {
         console.error('Error fetching invoices:', error);

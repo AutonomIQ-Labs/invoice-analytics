@@ -12,6 +12,17 @@ interface UseInvoicesOptions {
   maxAmount?: number;
   sortBy?: keyof Invoice;
   sortOrder?: 'asc' | 'desc';
+  batchId?: string; // Optional: specific batch, otherwise uses current
+}
+
+// Helper to get the current batch ID
+async function getCurrentBatchId(): Promise<string | null> {
+  const { data } = await supabase
+    .from('import_batches')
+    .select('id')
+    .eq('is_current', true)
+    .single();
+  return data?.id || null;
 }
 
 export function useInvoices(options: UseInvoicesOptions = {}) {
@@ -19,6 +30,7 @@ export function useInvoices(options: UseInvoicesOptions = {}) {
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const [currentBatchId, setCurrentBatchId] = useState<string | null>(null);
 
   const {
     page = 1,
@@ -30,6 +42,7 @@ export function useInvoices(options: UseInvoicesOptions = {}) {
     maxAmount,
     sortBy = 'days_old',
     sortOrder = 'desc',
+    batchId,
   } = options;
 
   const fetchInvoices = useCallback(async () => {
@@ -37,7 +50,20 @@ export function useInvoices(options: UseInvoicesOptions = {}) {
     setError(null);
 
     try {
+      // Get the batch ID to use (provided or current)
+      const targetBatchId = batchId || await getCurrentBatchId();
+      setCurrentBatchId(targetBatchId);
+      
+      if (!targetBatchId) {
+        setInvoices([]);
+        setTotalCount(0);
+        return;
+      }
+
       let query = supabase.from('invoices').select('*', { count: 'exact' });
+      
+      // Always filter by batch
+      query = query.eq('import_batch_id', targetBatchId);
 
       if (supplier) query = query.ilike('supplier', `%${supplier}%`);
       if (overallProcessState) query = query.eq('overall_process_state', overallProcessState);
@@ -62,13 +88,13 @@ export function useInvoices(options: UseInvoicesOptions = {}) {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, supplier, overallProcessState, agingBucket, minAmount, maxAmount, sortBy, sortOrder]);
+  }, [page, pageSize, supplier, overallProcessState, agingBucket, minAmount, maxAmount, sortBy, sortOrder, batchId]);
 
   useEffect(() => {
     fetchInvoices();
   }, [fetchInvoices]);
 
-  return { invoices, totalCount, loading, error, refetch: fetchInvoices };
+  return { invoices, totalCount, loading, error, refetch: fetchInvoices, currentBatchId };
 }
 
 export function useImportBatches() {
@@ -117,11 +143,31 @@ export function useDashboardStats() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const [currentBatch, setCurrentBatch] = useState<ImportBatch | null>(null);
 
   const fetchStats = useCallback(async () => {
     setLoading(true);
     try {
-      const { data, error: queryError } = await supabase.from('invoices').select('*');
+      // Get current batch
+      const { data: batchData } = await supabase
+        .from('import_batches')
+        .select('*')
+        .eq('is_current', true)
+        .single();
+      
+      const batch = batchData as ImportBatch | null;
+      setCurrentBatch(batch);
+      
+      if (!batch) {
+        setStats(null);
+        return;
+      }
+
+      // Only fetch invoices from current batch
+      const { data, error: queryError } = await supabase
+        .from('invoices')
+        .select('*')
+        .eq('import_batch_id', batch.id);
 
       if (queryError) throw queryError;
       
@@ -265,7 +311,122 @@ export function useDashboardStats() {
     fetchStats();
   }, [fetchStats]);
 
-  return { stats, loading, error, refetch: fetchStats };
+  return { stats, loading, error, refetch: fetchStats, currentBatch };
+}
+
+// Hook for getting batch comparison data
+export function useBatchComparison() {
+  const [comparison, setComparison] = useState<{
+    currentBatch: ImportBatch | null;
+    previousBatch: ImportBatch | null;
+    currentCount: number;
+    previousCount: number;
+    currentValue: number;
+    previousValue: number;
+    newInvoicesCount: number;
+    resolvedInvoicesCount: number;
+    newInvoicesValue: number;
+    resolvedInvoicesValue: number;
+    stateChanges: { state: string; current: number; previous: number; change: number }[];
+  } | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const fetchComparison = useCallback(async () => {
+    setLoading(true);
+    try {
+      // Get the two most recent batches
+      const { data: batches } = await supabase
+        .from('import_batches')
+        .select('*')
+        .order('imported_at', { ascending: false })
+        .limit(2);
+
+      if (!batches || batches.length === 0) {
+        setComparison(null);
+        return;
+      }
+
+      const currentBatch = batches[0] as ImportBatch;
+      const previousBatch = batches.length > 1 ? batches[1] as ImportBatch : null;
+
+      // Get current batch invoices
+      const { data: currentInvoices } = await supabase
+        .from('invoices')
+        .select('*')
+        .eq('import_batch_id', currentBatch.id);
+      
+      const current = (currentInvoices as Invoice[]) || [];
+
+      // Get previous batch invoices
+      let previous: Invoice[] = [];
+      if (previousBatch) {
+        const { data: prevInvoices } = await supabase
+          .from('invoices')
+          .select('*')
+          .eq('import_batch_id', previousBatch.id);
+        previous = (prevInvoices as Invoice[]) || [];
+      }
+
+      // Calculate totals
+      const currentValue = current.reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0);
+      const previousValue = previous.reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0);
+
+      // Find new and resolved invoices by invoice_id
+      const previousIds = new Set(previous.map(inv => inv.invoice_id));
+      const currentIds = new Set(current.map(inv => inv.invoice_id));
+
+      const newInvoices = current.filter(inv => !previousIds.has(inv.invoice_id));
+      const resolvedInvoices = previous.filter(inv => !currentIds.has(inv.invoice_id));
+
+      // Calculate state changes
+      const currentStateMap = new Map<string, { count: number; value: number }>();
+      const previousStateMap = new Map<string, { count: number; value: number }>();
+
+      current.forEach(inv => {
+        const state = inv.overall_process_state?.replace(/^\d+\s*-\s*/, '') || 'Unknown';
+        const existing = currentStateMap.get(state) || { count: 0, value: 0 };
+        currentStateMap.set(state, { count: existing.count + 1, value: existing.value + (inv.invoice_amount || 0) });
+      });
+
+      previous.forEach(inv => {
+        const state = inv.overall_process_state?.replace(/^\d+\s*-\s*/, '') || 'Unknown';
+        const existing = previousStateMap.get(state) || { count: 0, value: 0 };
+        previousStateMap.set(state, { count: existing.count + 1, value: existing.value + (inv.invoice_amount || 0) });
+      });
+
+      const allStates = new Set([...currentStateMap.keys(), ...previousStateMap.keys()]);
+      const stateChanges = Array.from(allStates).map(state => ({
+        state,
+        current: currentStateMap.get(state)?.count || 0,
+        previous: previousStateMap.get(state)?.count || 0,
+        change: (currentStateMap.get(state)?.count || 0) - (previousStateMap.get(state)?.count || 0),
+      })).sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
+
+      setComparison({
+        currentBatch,
+        previousBatch,
+        currentCount: current.length,
+        previousCount: previous.length,
+        currentValue,
+        previousValue,
+        newInvoicesCount: newInvoices.length,
+        resolvedInvoicesCount: resolvedInvoices.length,
+        newInvoicesValue: newInvoices.reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0),
+        resolvedInvoicesValue: resolvedInvoices.reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0),
+        stateChanges,
+      });
+    } catch (err) {
+      console.error('Error fetching comparison:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchComparison();
+  }, [fetchComparison]);
+
+  return { comparison, loading, refetch: fetchComparison };
 }
 
 function getAgingBucket(daysOld: number): string {

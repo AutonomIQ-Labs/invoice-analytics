@@ -33,11 +33,20 @@ export function CsvUploader({ onImportComplete }: CsvUploaderProps) {
     }
 
     try {
+      setProgress({ status: 'parsing', message: 'Preparing import...', progress: 5 });
+      
+      // Mark all existing batches as not current
+      await supabase
+        .from('import_batches')
+        .update({ is_current: false })
+        .eq('is_current', true);
+
       setProgress({ status: 'parsing', message: 'Creating import batch...', progress: 10 });
       
+      // Create new batch as current
       const { data: batchData, error: batchError } = await supabase
         .from('import_batches')
-        .insert({ filename: file.name, record_count: 0, skipped_count: 0, imported_by: user?.id })
+        .insert({ filename: file.name, record_count: 0, skipped_count: 0, imported_by: user?.id, is_current: true })
         .select()
         .single();
 
