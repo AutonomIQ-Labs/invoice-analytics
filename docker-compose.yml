@@ -1,0 +1,13 @@
+services:
+  invoice-analytics:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_SUPABASE_URL: https://rpmxrpiiqtgzdbtvhefy.supabase.co
+        VITE_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJwbXhycGlpcXRnemRidHZoZWZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ3NzU4NzksImV4cCI6MjA4MDM1MTg3OX0.uSdxOWcEPDBFf1sddX15hcv1UPJ1pyIXvq9F-1LzQhc
+    container_name: invoice-analytics
+    ports:
+      - "3000:80"
+    restart: unless-stopped
+

@@ -1,0 +1,92 @@
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useDashboardStats, useImportBatches, useInvoices } from '../hooks/useInvoices';
+import { StatCard } from '../components/dashboard/StatCard';
+import { AgingChart } from '../components/dashboard/AgingChart';
+import { MonthlyAgingChart } from '../components/dashboard/MonthlyAgingChart';
+import { ProcessStateChart } from '../components/dashboard/ProcessStateChart';
+import { VendorTable } from '../components/dashboard/VendorTable';
+import { StuckInvoicesPanel } from '../components/dashboard/StuckInvoicesPanel';
+import { TrendChart } from '../components/dashboard/TrendChart';
+import { PoBreakdownChart } from '../components/dashboard/PoBreakdownChart';
+
+const formatCurrency = (value: number) => new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD', notation: 'compact', maximumFractionDigits: 1 }).format(value);
+
+export function Dashboard() {
+  const navigate = useNavigate();
+  const { stats, loading: statsLoading } = useDashboardStats();
+  const { batches } = useImportBatches();
+  const { invoices } = useInvoices({ pageSize: 1000 });
+  const [agingViewMode, setAgingViewMode] = useState<'count' | 'value'>('count');
+
+  const handleStateClick = (state: string) => navigate(`/invoices?state=${encodeURIComponent(state)}`);
+  const handleVendorClick = (vendor: string) => navigate(`/invoices?vendor=${encodeURIComponent(vendor)}`);
+  const handlePoTypeClick = (poType: string) => navigate(`/invoices?poType=${encodeURIComponent(poType)}`);
+  const handleAgingBucketClick = (bucket: string) => navigate(`/invoices?aging=${encodeURIComponent(bucket)}`);
+
+  if (statsLoading || !stats) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-sky-500 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-slate-400">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Dashboard</h1>
+          <p className="text-slate-400 mt-1">SKG Payables Invoice Analytics</p>
+        </div>
+        <button onClick={() => navigate('/import')} className="btn-primary flex items-center gap-2">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+          </svg>
+          Import Data
+        </button>
+      </div>
+
+      {/* Stats Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard title="Total Invoices" value={stats.totalInvoices.toLocaleString()} subtitle={formatCurrency(stats.totalValue)} icon="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" color="primary" />
+        <StatCard title="Ready for Payment" value={stats.readyForPayment.count.toLocaleString()} subtitle={formatCurrency(stats.readyForPayment.value)} icon="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" color="green" />
+        <StatCard title="Requires Investigation" value={stats.requiresInvestigation.count.toLocaleString()} subtitle={formatCurrency(stats.requiresInvestigation.value)} icon="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" color="red" />
+        <StatCard title="Average Age" value={`${Math.round(stats.averageDaysOld)} days`} subtitle="Across all invoices" icon="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" color="yellow" />
+      </div>
+
+      {/* Charts Row 1 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <span></span>
+            <div className="flex gap-1 bg-slate-700/50 rounded-lg p-1">
+              <button onClick={() => setAgingViewMode('count')} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${agingViewMode === 'count' ? 'bg-sky-500 text-white' : 'text-slate-400 hover:text-white'}`}>Count</button>
+              <button onClick={() => setAgingViewMode('value')} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${agingViewMode === 'value' ? 'bg-sky-500 text-white' : 'text-slate-400 hover:text-white'}`}>Value</button>
+            </div>
+          </div>
+          <AgingChart data={stats.agingBreakdown} viewMode={agingViewMode} />
+        </div>
+        <ProcessStateChart data={stats.processStateBreakdown} onStateClick={handleStateClick} />
+      </div>
+
+      {/* Monthly Aging Breakdown - Full Width */}
+      <MonthlyAgingChart data={stats.monthlyAgingBreakdown} onBucketClick={handleAgingBucketClick} />
+
+      {/* Charts Row 2 - PO Breakdown and Trend */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <PoBreakdownChart data={stats.poBreakdown} onTypeClick={handlePoTypeClick} />
+        <TrendChart batches={batches} />
+      </div>
+
+      {/* Bottom Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <VendorTable data={stats.topVendors} onVendorClick={handleVendorClick} />
+        <StuckInvoicesPanel invoices={invoices} onInvoiceClick={(inv) => navigate(`/invoices?id=${inv.id}`)} />
+      </div>
+    </div>
+  );
+}
