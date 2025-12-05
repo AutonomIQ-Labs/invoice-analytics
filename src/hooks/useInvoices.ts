@@ -152,10 +152,12 @@ export function useImportBatches() {
             new Date(b.imported_at).getTime() - new Date(a.imported_at).getTime()
           )[0];
           
-          await supabase
+          const { error: updateError } = await supabase
             .from('import_batches')
             .update({ is_current: true })
             .eq('id', mostRecent.id);
+          
+          if (updateError) throw updateError;
         }
       }
 
