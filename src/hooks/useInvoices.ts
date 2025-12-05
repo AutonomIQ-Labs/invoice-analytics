@@ -101,6 +101,7 @@ export function useImportBatches() {
   const [batches, setBatches] = useState<ImportBatch[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   const fetchBatches = useCallback(async () => {
     setLoading(true);
@@ -119,11 +120,62 @@ export function useImportBatches() {
     }
   }, []);
 
+  const deleteBatch = useCallback(async (batchId: string): Promise<{ success: boolean; error?: string }> => {
+    setDeleting(batchId);
+    try {
+      // Find the batch to check if it's current
+      const batchToDelete = batches.find(b => b.id === batchId);
+      const wasCurrent = batchToDelete?.is_current;
+
+      // Delete all invoices with this batch ID first
+      const { error: invoicesError } = await supabase
+        .from('invoices')
+        .delete()
+        .eq('import_batch_id', batchId);
+
+      if (invoicesError) throw invoicesError;
+
+      // Delete the batch record
+      const { error: batchError } = await supabase
+        .from('import_batches')
+        .delete()
+        .eq('id', batchId);
+
+      if (batchError) throw batchError;
+
+      // If the deleted batch was current, set the most recent remaining batch as current
+      if (wasCurrent) {
+        const remainingBatches = batches.filter(b => b.id !== batchId);
+        if (remainingBatches.length > 0) {
+          // Sort by imported_at descending and get the most recent
+          const mostRecent = remainingBatches.sort((a, b) => 
+            new Date(b.imported_at).getTime() - new Date(a.imported_at).getTime()
+          )[0];
+          
+          await supabase
+            .from('import_batches')
+            .update({ is_current: true })
+            .eq('id', mostRecent.id);
+        }
+      }
+
+      // Refresh the batches list
+      await fetchBatches();
+      return { success: true };
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to delete batch';
+      setError(err as Error);
+      return { success: false, error: errorMessage };
+    } finally {
+      setDeleting(null);
+    }
+  }, [batches, fetchBatches]);
+
   useEffect(() => {
     fetchBatches();
   }, [fetchBatches]);
 
-  return { batches, loading, error, refetch: fetchBatches };
+  return { batches, loading, error, refetch: fetchBatches, deleteBatch, deleting };
 }
 
 export interface DashboardStats {
