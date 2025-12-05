@@ -35,11 +35,12 @@ export function CsvUploader({ onImportComplete }: CsvUploaderProps) {
     try {
       setProgress({ status: 'parsing', message: 'Preparing import...', progress: 5 });
       
-      // Mark all existing batches as not current
+      // Mark all existing non-deleted batches as not current
       await supabase
         .from('import_batches')
         .update({ is_current: false })
-        .eq('is_current', true);
+        .eq('is_current', true)
+        .or('is_deleted.is.null,is_deleted.eq.false');
 
       setProgress({ status: 'parsing', message: 'Creating import batch...', progress: 10 });
       

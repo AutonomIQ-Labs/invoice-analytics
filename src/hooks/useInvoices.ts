@@ -106,6 +106,7 @@ export function useImportBatches() {
   const fetchBatches = useCallback(async () => {
     setLoading(true);
     try {
+      // Fetch all batches including deleted ones for display purposes
       const { data, error: queryError } = await supabase
         .from('import_batches')
         .select('*')
@@ -123,55 +124,88 @@ export function useImportBatches() {
   const deleteBatch = useCallback(async (batchId: string): Promise<{ success: boolean; error?: string }> => {
     setDeleting(batchId);
     try {
-      // Find the batch to check if it's current
-      const batchToDelete = batches.find(b => b.id === batchId);
-      const wasCurrent = batchToDelete?.is_current;
-
-      // Delete all invoices with this batch ID first
-      const { error: invoicesError } = await supabase
-        .from('invoices')
-        .delete()
-        .eq('import_batch_id', batchId);
-
-      if (invoicesError) throw invoicesError;
-
-      // Delete the batch record
-      const { error: batchError } = await supabase
+      // Get all non-deleted batches sorted by date
+      const { data: allBatches, error: fetchError } = await supabase
         .from('import_batches')
-        .delete()
+        .select('*')
+        .or('is_deleted.is.null,is_deleted.eq.false')
+        .order('imported_at', { ascending: false });
+
+      if (fetchError) {
+        throw new Error(`Failed to fetch batches: ${fetchError.message}`);
+      }
+
+      const nonDeletedBatches = (allBatches as ImportBatch[]) || [];
+      
+      // Find the batch to delete
+      const batchToDelete = nonDeletedBatches.find(b => b.id === batchId);
+      if (!batchToDelete) {
+        throw new Error('Batch not found or already deleted');
+      }
+
+      // Enforce sequential deletion: only allow deleting the most recent non-deleted batch
+      const mostRecentBatch = nonDeletedBatches[0];
+      if (batchToDelete.id !== mostRecentBatch.id) {
+        throw new Error('Batches must be deleted from most recent to oldest. Please delete batches in order from top to bottom.');
+      }
+
+      const wasCurrent = batchToDelete.is_current;
+
+      // Soft delete: mark as deleted instead of actually deleting
+      const { error: updateError } = await supabase
+        .from('import_batches')
+        .update({ is_deleted: true })
         .eq('id', batchId);
 
-      if (batchError) throw batchError;
+      if (updateError) {
+        console.error('Error marking batch as deleted:', updateError);
+        throw new Error(`Failed to delete batch: ${updateError.message}`);
+      }
 
-      // If the deleted batch was current, set the most recent remaining batch as current
-      if (wasCurrent) {
-        const remainingBatches = batches.filter(b => b.id !== batchId);
-        if (remainingBatches.length > 0) {
-          // Sort by imported_at descending and get the most recent
-          const mostRecent = remainingBatches.sort((a, b) => 
-            new Date(b.imported_at).getTime() - new Date(a.imported_at).getTime()
-          )[0];
-          
-          const { error: updateError } = await supabase
-            .from('import_batches')
-            .update({ is_current: true })
-            .eq('id', mostRecent.id);
-          
-          if (updateError) throw updateError;
+      console.log(`Successfully marked batch ${batchId} as deleted`);
+
+      // If the deleted batch was current, set the next most recent non-deleted batch as current
+      if (wasCurrent && nonDeletedBatches.length > 1) {
+        // Get the next most recent batch (skip the one we're deleting)
+        const nextBatch = nonDeletedBatches[1];
+        
+        // First, clear all current flags
+        await supabase
+          .from('import_batches')
+          .update({ is_current: false })
+          .neq('id', batchId);
+
+        // Set the next batch as current
+        const { error: updateCurrentError } = await supabase
+          .from('import_batches')
+          .update({ is_current: true })
+          .eq('id', nextBatch.id);
+        
+        if (updateCurrentError) {
+          console.error('Error updating current batch:', updateCurrentError);
+          throw new Error(`Failed to set new current batch: ${updateCurrentError.message}`);
         }
+        console.log(`Set batch ${nextBatch.id} (${nextBatch.filename}) as current`);
       }
 
       // Refresh the batches list
       await fetchBatches();
+      
+      // Dispatch custom event to notify other components to refresh
+      console.log('Dispatching batchDeleted event to refresh comparison and dashboard...');
+      window.dispatchEvent(new CustomEvent('batchDeleted', { detail: { batchId, deletedAt: new Date().toISOString() } }));
+      console.log('Batch deleted event dispatched');
+      
       return { success: true };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to delete batch';
+      console.error('Delete batch error:', err);
       setError(err as Error);
       return { success: false, error: errorMessage };
     } finally {
       setDeleting(null);
     }
-  }, [batches, fetchBatches]);
+  }, [fetchBatches]);
 
   useEffect(() => {
     fetchBatches();
@@ -202,11 +236,12 @@ export function useDashboardStats() {
   const fetchStats = useCallback(async () => {
     setLoading(true);
     try {
-      // Get current batch
+      // Get current batch, excluding deleted batches
       const { data: batchData } = await supabase
         .from('import_batches')
         .select('*')
         .eq('is_current', true)
+        .or('is_deleted.is.null,is_deleted.eq.false')
         .single();
       
       const batch = batchData as ImportBatch | null;
@@ -363,6 +398,22 @@ export function useDashboardStats() {
 
   useEffect(() => {
     fetchStats();
+    
+    // Listen for batch deletion events to refresh stats
+    const handleBatchDeleted = () => {
+      console.log('Dashboard stats: Batch deleted event received, refreshing...');
+      // Add delay to ensure database has fully processed deletion
+      setTimeout(() => {
+        console.log('Dashboard stats: Executing refresh...');
+        fetchStats();
+      }, 800);
+    };
+    
+    window.addEventListener('batchDeleted', handleBatchDeleted);
+    
+    return () => {
+      window.removeEventListener('batchDeleted', handleBatchDeleted);
+    };
   }, [fetchStats]);
 
   return { stats, loading, error, refetch: fetchStats, currentBatch };
@@ -387,21 +438,135 @@ export function useBatchComparison() {
 
   const fetchComparison = useCallback(async () => {
     setLoading(true);
+    console.log('Fetching batch comparison...');
     try {
-      // Get the two most recent batches
-      const { data: batches } = await supabase
+      // Get the current batch (is_current = true), excluding deleted batches
+      const { data: currentBatchData, error: currentBatchError } = await supabase
         .from('import_batches')
         .select('*')
-        .order('imported_at', { ascending: false })
-        .limit(2);
+        .eq('is_current', true)
+        .or('is_deleted.is.null,is_deleted.eq.false')
+        .single();
 
-      if (!batches || batches.length === 0) {
-        setComparison(null);
+      if (currentBatchError || !currentBatchData) {
+        console.log('No current batch found, using fallback logic');
+        // Fallback: use the most recent non-deleted batch if no current is set
+        const { data: recentBatches } = await supabase
+          .from('import_batches')
+          .select('*')
+          .or('is_deleted.is.null,is_deleted.eq.false')
+          .order('imported_at', { ascending: false })
+          .limit(1);
+        
+        if (!recentBatches || recentBatches.length === 0) {
+          setComparison(null);
+          return;
+        }
+        
+        const currentBatch = recentBatches[0] as ImportBatch;
+        
+        // Get the most recent non-deleted batch BEFORE the current one
+        const { data: previousBatchData } = await supabase
+          .from('import_batches')
+          .select('*')
+          .lt('imported_at', currentBatch.imported_at)
+          .or('is_deleted.is.null,is_deleted.eq.false')
+          .order('imported_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const previousBatch = previousBatchData as ImportBatch | null;
+
+        // Get invoices for comparison
+        const { data: currentInvoices } = await supabase
+          .from('invoices')
+          .select('*')
+          .eq('import_batch_id', currentBatch.id);
+        
+        const current = (currentInvoices as Invoice[]) || [];
+        let previous: Invoice[] = [];
+        
+        if (previousBatch) {
+          const { data: prevInvoices } = await supabase
+            .from('invoices')
+            .select('*')
+            .eq('import_batch_id', previousBatch.id);
+          previous = (prevInvoices as Invoice[]) || [];
+        }
+
+        // Calculate comparison (code continues below...)
+        const currentValue = current.reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0);
+        const previousValue = previous.reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0);
+
+        const previousIds = new Set(previous.map(inv => inv.invoice_id));
+        const currentIds = new Set(current.map(inv => inv.invoice_id));
+
+        const newInvoices = current.filter(inv => !previousIds.has(inv.invoice_id));
+        const resolvedInvoices = previous.filter(inv => !currentIds.has(inv.invoice_id));
+
+        // Calculate state changes
+        const currentStateMap = new Map<string, { count: number; value: number }>();
+        const previousStateMap = new Map<string, { count: number; value: number }>();
+
+        current.forEach(inv => {
+          const state = inv.overall_process_state?.replace(/^\d+\s*-\s*/, '') || 'Unknown';
+          const existing = currentStateMap.get(state) || { count: 0, value: 0 };
+          currentStateMap.set(state, { count: existing.count + 1, value: existing.value + (inv.invoice_amount || 0) });
+        });
+
+        previous.forEach(inv => {
+          const state = inv.overall_process_state?.replace(/^\d+\s*-\s*/, '') || 'Unknown';
+          const existing = previousStateMap.get(state) || { count: 0, value: 0 };
+          previousStateMap.set(state, { count: existing.count + 1, value: existing.value + (inv.invoice_amount || 0) });
+        });
+
+        const allStates = new Set([...currentStateMap.keys(), ...previousStateMap.keys()]);
+        const stateChanges = Array.from(allStates).map(state => ({
+          state,
+          current: currentStateMap.get(state)?.count || 0,
+          previous: previousStateMap.get(state)?.count || 0,
+          change: (currentStateMap.get(state)?.count || 0) - (previousStateMap.get(state)?.count || 0),
+        })).sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
+
+        setComparison({
+          currentBatch,
+          previousBatch,
+          currentCount: current.length,
+          previousCount: previous.length,
+          currentValue,
+          previousValue,
+          newInvoicesCount: newInvoices.length,
+          resolvedInvoicesCount: resolvedInvoices.length,
+          newInvoicesValue: newInvoices.reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0),
+          resolvedInvoicesValue: resolvedInvoices.reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0),
+          stateChanges,
+        });
         return;
       }
 
-      const currentBatch = batches[0] as ImportBatch;
-      const previousBatch = batches.length > 1 ? batches[1] as ImportBatch : null;
+      const currentBatch = currentBatchData as ImportBatch;
+      console.log(`Current batch: ${currentBatch.filename} (${currentBatch.imported_at}), ID: ${currentBatch.id}`);
+
+      // Get the most recent non-deleted batch BEFORE the current one (this ensures deleted batches are skipped)
+      const { data: previousBatchData, error: previousBatchError } = await supabase
+        .from('import_batches')
+        .select('*')
+        .lt('imported_at', currentBatch.imported_at)
+        .or('is_deleted.is.null,is_deleted.eq.false')
+        .order('imported_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (previousBatchError) {
+        console.error('Error fetching previous batch:', previousBatchError);
+      }
+
+      const previousBatch = previousBatchData as ImportBatch | null;
+      if (previousBatch) {
+        console.log(`Previous batch: ${previousBatch.filename} (${previousBatch.imported_at}), ID: ${previousBatch.id}`);
+      } else {
+        console.log('No previous batch found');
+      }
 
       // Get current batch invoices
       const { data: currentInvoices } = await supabase
@@ -456,7 +621,7 @@ export function useBatchComparison() {
         change: (currentStateMap.get(state)?.count || 0) - (previousStateMap.get(state)?.count || 0),
       })).sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
 
-      setComparison({
+      const comparisonData = {
         currentBatch,
         previousBatch,
         currentCount: current.length,
@@ -468,9 +633,19 @@ export function useBatchComparison() {
         newInvoicesValue: newInvoices.reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0),
         resolvedInvoicesValue: resolvedInvoices.reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0),
         stateChanges,
+      };
+      
+      console.log('Comparison data:', {
+        current: `${comparisonData.currentBatch.filename} (${comparisonData.currentCount} invoices, $${comparisonData.currentValue})`,
+        previous: previousBatch ? `${comparisonData.previousBatch?.filename} (${comparisonData.previousCount} invoices, $${comparisonData.previousValue})` : 'None',
+        newInvoices: comparisonData.newInvoicesCount,
+        resolvedInvoices: comparisonData.resolvedInvoicesCount,
       });
+      
+      setComparison(comparisonData);
     } catch (err) {
       console.error('Error fetching comparison:', err);
+      setComparison(null);
     } finally {
       setLoading(false);
     }
@@ -478,6 +653,27 @@ export function useBatchComparison() {
 
   useEffect(() => {
     fetchComparison();
+  }, [fetchComparison]);
+
+  useEffect(() => {
+    // Listen for batch deletion events to refresh comparison
+    const handleBatchDeleted = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      console.log('Batch deleted event received:', customEvent.detail);
+      console.log('Refreshing comparison after batch deletion...');
+      // Add a delay to ensure database has fully processed the deletion
+      // and comparison query will find the correct previous batch
+      setTimeout(() => {
+        console.log('Executing comparison refresh...');
+        fetchComparison();
+      }, 800); // Longer delay to ensure database is fully synced
+    };
+    
+    window.addEventListener('batchDeleted', handleBatchDeleted);
+    
+    return () => {
+      window.removeEventListener('batchDeleted', handleBatchDeleted);
+    };
   }, [fetchComparison]);
 
   return { comparison, loading, refetch: fetchComparison };

@@ -35,6 +35,7 @@ export interface ImportBatch {
   imported_at: string;
   imported_by: string | null;
   is_current: boolean;
+  is_deleted?: boolean;
 }
 
 export interface BatchComparison {

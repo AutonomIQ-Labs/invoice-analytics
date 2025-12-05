@@ -10,6 +10,12 @@ export function Import() {
   const [confirmDelete, setConfirmDelete] = useState<ImportBatch | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  // Get non-deleted batches sorted by date
+  const nonDeletedBatches = batches.filter(b => !b.is_deleted);
+  const mostRecentNonDeletedBatchId = nonDeletedBatches.length > 0 
+    ? nonDeletedBatches.sort((a, b) => new Date(b.imported_at).getTime() - new Date(a.imported_at).getTime())[0].id
+    : null;
+
   const handleDeleteClick = (batch: ImportBatch) => {
     setDeleteError(null);
     setConfirmDelete(batch);
@@ -21,6 +27,14 @@ export function Import() {
     const result = await deleteBatch(confirmDelete.id);
     if (result.success) {
       setConfirmDelete(null);
+      setDeleteError(null);
+      
+      // Force multiple refreshes to ensure UI is updated
+      await refetch();
+      // Wait a bit and refresh again to ensure database changes are reflected
+      setTimeout(async () => {
+        await refetch();
+      }, 1000);
     } else {
       setDeleteError(result.error || 'Failed to delete batch');
     }
@@ -91,48 +105,66 @@ export function Import() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-700/50">
-                {batches.map((batch) => (
-                  <tr key={batch.id} className={`hover:bg-slate-800/30 ${batch.is_current ? 'bg-sky-500/5' : ''}`}>
-                    <td className="px-4 py-3"><p className="text-sm text-white">{batch.filename}</p></td>
-                    <td className="px-4 py-3"><p className="text-sm text-slate-400">{formatDate(batch.imported_at)}</p></td>
-                    <td className="px-4 py-3"><span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/20 text-emerald-400">{batch.record_count.toLocaleString()}</span></td>
-                    <td className="px-4 py-3"><span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-500/20 text-slate-400">{batch.skipped_count.toLocaleString()}</span></td>
-                    <td className="px-4 py-3">
-                      {batch.is_current ? (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-sky-500/20 text-sky-400 border border-sky-500/30">
-                          <span className="w-1.5 h-1.5 rounded-full bg-sky-400 mr-1.5 animate-pulse"></span>
-                          Current
-                        </span>
-                      ) : (
-                        <span className="text-xs text-slate-500">Previous</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => handleDeleteClick(batch)}
-                        disabled={deleting === batch.id}
-                        className="inline-flex items-center px-2.5 py-1.5 text-xs font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {deleting === batch.id ? (
-                          <>
-                            <svg className="w-3.5 h-3.5 mr-1 animate-spin" fill="none" viewBox="0 0 24 24">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
-                            Deleting...
-                          </>
+                {batches.map((batch) => {
+                  const isDeleted = batch.is_deleted === true;
+                  const isMostRecentNonDeleted = !isDeleted && batch.id === mostRecentNonDeletedBatchId;
+                  const canDelete = !isDeleted && isMostRecentNonDeleted;
+                  
+                  return (
+                    <tr 
+                      key={batch.id} 
+                      className={`hover:bg-slate-800/30 ${batch.is_current ? 'bg-sky-500/5' : ''} ${isDeleted ? 'opacity-50' : ''}`}
+                    >
+                      <td className="px-4 py-3"><p className={`text-sm ${isDeleted ? 'text-slate-500 line-through' : 'text-white'}`}>{batch.filename}</p></td>
+                      <td className="px-4 py-3"><p className={`text-sm ${isDeleted ? 'text-slate-600' : 'text-slate-400'}`}>{formatDate(batch.imported_at)}</p></td>
+                      <td className="px-4 py-3"><span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${isDeleted ? 'bg-slate-700/50 text-slate-500' : 'bg-emerald-500/20 text-emerald-400'}`}>{batch.record_count.toLocaleString()}</span></td>
+                      <td className="px-4 py-3"><span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${isDeleted ? 'bg-slate-700/50 text-slate-500' : 'bg-slate-500/20 text-slate-400'}`}>{batch.skipped_count.toLocaleString()}</span></td>
+                      <td className="px-4 py-3">
+                        {batch.is_current && !isDeleted ? (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-sky-500/20 text-sky-400 border border-sky-500/30">
+                            <span className="w-1.5 h-1.5 rounded-full bg-sky-400 mr-1.5 animate-pulse"></span>
+                            Current
+                          </span>
+                        ) : isDeleted ? (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-500/20 text-red-400 border border-red-500/30">
+                            Deleted
+                          </span>
                         ) : (
-                          <>
-                            <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                            Delete
-                          </>
+                          <span className="text-xs text-slate-500">Previous</span>
                         )}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          onClick={() => handleDeleteClick(batch)}
+                          disabled={deleting === batch.id || !canDelete}
+                          className={`inline-flex items-center px-2.5 py-1.5 text-xs font-medium rounded transition-colors ${
+                            isDeleted || !canDelete
+                              ? 'text-slate-600 cursor-not-allowed opacity-50'
+                              : 'text-red-400 hover:text-red-300 hover:bg-red-500/10'
+                          } ${deleting === batch.id ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          title={isDeleted ? 'This batch is already deleted' : !canDelete ? 'Batches must be deleted from most recent to oldest' : 'Delete batch'}
+                        >
+                          {deleting === batch.id ? (
+                            <>
+                              <svg className="w-3.5 h-3.5 mr-1 animate-spin" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                              </svg>
+                              Deleting...
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                              Delete
+                            </>
+                          )}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
