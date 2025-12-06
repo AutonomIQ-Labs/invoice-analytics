@@ -1,6 +1,9 @@
 # Stage 1: Build the application
 FROM node:20-alpine AS builder
 
+# Update Alpine packages to fix security vulnerabilities
+RUN apk update && apk upgrade && rm -rf /var/cache/apk/*
+
 WORKDIR /app
 
 # Build arguments for Vite environment variables
@@ -25,6 +28,9 @@ RUN npm run build
 
 # Stage 2: Serve with nginx
 FROM nginx:alpine AS production
+
+# Update Alpine packages to fix security vulnerabilities
+RUN apk update && apk upgrade && rm -rf /var/cache/apk/*
 
 # Copy custom nginx config
 COPY nginx.conf /etc/nginx/conf.d/default.conf

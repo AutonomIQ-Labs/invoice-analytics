@@ -128,22 +128,42 @@ export function MonthlyAgingChart({ data, onBucketClick }: MonthlyAgingChartProp
         </div>
       </div>
 
-      {/* Summary Stats */}
-      <div className="grid grid-cols-4 gap-3 mb-4">
+      {/* Summary Stats - Dynamic based on data and viewMode */}
+      <div className="grid gap-3 mb-4 grid-cols-4">
         <div className="bg-slate-800/50 rounded-lg p-3 text-center">
-          <p className="text-lg font-bold text-cyan-400">{data.slice(0, 2).reduce((s, d) => s + d.count, 0).toLocaleString()}</p>
-          <p className="text-xs text-slate-500">90-150 days</p>
+          <p className="text-lg font-bold text-emerald-400">
+            {viewMode === 'count' 
+              ? data.filter(d => d.daysMin < 90).reduce((s, d) => s + d.count, 0).toLocaleString()
+              : formatCurrency(data.filter(d => d.daysMin < 90).reduce((s, d) => s + d.value, 0))
+            }
+          </p>
+          <p className="text-xs text-slate-500">0-90 days</p>
         </div>
         <div className="bg-slate-800/50 rounded-lg p-3 text-center">
-          <p className="text-lg font-bold text-indigo-400">{data.slice(2, 4).reduce((s, d) => s + d.count, 0).toLocaleString()}</p>
-          <p className="text-xs text-slate-500">150-210 days</p>
+          <p className="text-lg font-bold text-cyan-400">
+            {viewMode === 'count'
+              ? data.filter(d => d.daysMin >= 90 && d.daysMin < 180).reduce((s, d) => s + d.count, 0).toLocaleString()
+              : formatCurrency(data.filter(d => d.daysMin >= 90 && d.daysMin < 180).reduce((s, d) => s + d.value, 0))
+            }
+          </p>
+          <p className="text-xs text-slate-500">90-180 days</p>
         </div>
         <div className="bg-slate-800/50 rounded-lg p-3 text-center">
-          <p className="text-lg font-bold text-purple-400">{data.slice(4, 6).reduce((s, d) => s + d.count, 0).toLocaleString()}</p>
-          <p className="text-xs text-slate-500">210-270 days</p>
+          <p className="text-lg font-bold text-purple-400">
+            {viewMode === 'count'
+              ? data.filter(d => d.daysMin >= 180 && d.daysMin < 270).reduce((s, d) => s + d.count, 0).toLocaleString()
+              : formatCurrency(data.filter(d => d.daysMin >= 180 && d.daysMin < 270).reduce((s, d) => s + d.value, 0))
+            }
+          </p>
+          <p className="text-xs text-slate-500">180-270 days</p>
         </div>
         <div className="bg-slate-800/50 rounded-lg p-3 text-center">
-          <p className="text-lg font-bold text-red-400">{data.slice(6).reduce((s, d) => s + d.count, 0).toLocaleString()}</p>
+          <p className="text-lg font-bold text-red-400">
+            {viewMode === 'count'
+              ? data.filter(d => d.daysMin >= 270).reduce((s, d) => s + d.count, 0).toLocaleString()
+              : formatCurrency(data.filter(d => d.daysMin >= 270).reduce((s, d) => s + d.value, 0))
+            }
+          </p>
           <p className="text-xs text-slate-500">270+ days</p>
         </div>
       </div>

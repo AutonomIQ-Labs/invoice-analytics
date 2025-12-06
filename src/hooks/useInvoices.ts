@@ -15,14 +15,26 @@ interface UseInvoicesOptions {
   batchId?: string; // Optional: specific batch, otherwise uses current
 }
 
-// Helper to get the current batch ID
+// Helper to get the current batch ID, excluding deleted batches
 async function getCurrentBatchId(): Promise<string | null> {
   const { data } = await supabase
     .from('import_batches')
     .select('id')
     .eq('is_current', true)
-    .single();
+    .or('is_deleted.is.null,is_deleted.eq.false')
+    .maybeSingle();
   return data?.id || null;
+}
+
+// Helper to get current batch with full info
+async function getCurrentBatch(): Promise<ImportBatch | null> {
+  const { data } = await supabase
+    .from('import_batches')
+    .select('*')
+    .eq('is_current', true)
+    .or('is_deleted.is.null,is_deleted.eq.false')
+    .maybeSingle();
+  return data as ImportBatch | null;
 }
 
 export function useInvoices(options: UseInvoicesOptions = {}) {
@@ -61,8 +73,6 @@ export function useInvoices(options: UseInvoicesOptions = {}) {
       }
 
       let query = supabase.from('invoices').select('*', { count: 'exact' });
-      
-      // Always filter by batch
       query = query.eq('import_batch_id', targetBatchId);
 
       if (supplier) query = query.ilike('supplier', `%${supplier}%`);
@@ -106,7 +116,6 @@ export function useImportBatches() {
   const fetchBatches = useCallback(async () => {
     setLoading(true);
     try {
-      // Fetch all batches including deleted ones for display purposes
       const { data, error: queryError } = await supabase
         .from('import_batches')
         .select('*')
@@ -124,6 +133,12 @@ export function useImportBatches() {
   const deleteBatch = useCallback(async (batchId: string): Promise<{ success: boolean; error?: string }> => {
     setDeleting(batchId);
     try {
+      // Find the batch to delete
+      const batchToDelete = batches.find(b => b.id === batchId);
+      if (!batchToDelete) {
+        throw new Error('Batch not found');
+      }
+      
       // Get all non-deleted batches sorted by date
       const { data: allBatches, error: fetchError } = await supabase
         .from('import_batches')
@@ -137,12 +152,6 @@ export function useImportBatches() {
 
       const nonDeletedBatches = (allBatches as ImportBatch[]) || [];
       
-      // Find the batch to delete
-      const batchToDelete = nonDeletedBatches.find(b => b.id === batchId);
-      if (!batchToDelete) {
-        throw new Error('Batch not found or already deleted');
-      }
-
       // Enforce sequential deletion: only allow deleting the most recent non-deleted batch
       const mostRecentBatch = nonDeletedBatches[0];
       if (batchToDelete.id !== mostRecentBatch.id) {
@@ -151,61 +160,48 @@ export function useImportBatches() {
 
       const wasCurrent = batchToDelete.is_current;
 
-      // Soft delete: mark as deleted instead of actually deleting
+      // Soft delete: mark as deleted
       const { error: updateError } = await supabase
         .from('import_batches')
         .update({ is_deleted: true })
         .eq('id', batchId);
 
       if (updateError) {
-        console.error('Error marking batch as deleted:', updateError);
         throw new Error(`Failed to delete batch: ${updateError.message}`);
       }
 
-      console.log(`Successfully marked batch ${batchId} as deleted`);
-
       // If the deleted batch was current, set the next most recent non-deleted batch as current
       if (wasCurrent && nonDeletedBatches.length > 1) {
-        // Get the next most recent batch (skip the one we're deleting)
         const nextBatch = nonDeletedBatches[1];
         
-        // First, clear all current flags
+        // Clear all current flags first
         await supabase
           .from('import_batches')
           .update({ is_current: false })
           .neq('id', batchId);
 
         // Set the next batch as current
-        const { error: updateCurrentError } = await supabase
+        await supabase
           .from('import_batches')
           .update({ is_current: true })
           .eq('id', nextBatch.id);
-        
-        if (updateCurrentError) {
-          console.error('Error updating current batch:', updateCurrentError);
-          throw new Error(`Failed to set new current batch: ${updateCurrentError.message}`);
-        }
-        console.log(`Set batch ${nextBatch.id} (${nextBatch.filename}) as current`);
       }
 
       // Refresh the batches list
       await fetchBatches();
       
-      // Dispatch custom event to notify other components to refresh
-      console.log('Dispatching batchDeleted event to refresh comparison and dashboard...');
-      window.dispatchEvent(new CustomEvent('batchDeleted', { detail: { batchId, deletedAt: new Date().toISOString() } }));
-      console.log('Batch deleted event dispatched');
+      // Dispatch event to notify other components
+      window.dispatchEvent(new CustomEvent('batchDeleted', { detail: { batchId } }));
       
       return { success: true };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to delete batch';
-      console.error('Delete batch error:', err);
       setError(err as Error);
       return { success: false, error: errorMessage };
     } finally {
       setDeleting(null);
     }
-  }, [fetchBatches]);
+  }, [fetchBatches, batches]);
 
   useEffect(() => {
     fetchBatches();
@@ -236,15 +232,8 @@ export function useDashboardStats() {
   const fetchStats = useCallback(async () => {
     setLoading(true);
     try {
-      // Get current batch, excluding deleted batches
-      const { data: batchData } = await supabase
-        .from('import_batches')
-        .select('*')
-        .eq('is_current', true)
-        .or('is_deleted.is.null,is_deleted.eq.false')
-        .single();
-      
-      const batch = batchData as ImportBatch | null;
+      // Get current batch
+      const batch = await getCurrentBatch();
       setCurrentBatch(batch);
       
       if (!batch) {
@@ -252,15 +241,32 @@ export function useDashboardStats() {
         return;
       }
 
-      // Only fetch invoices from current batch
-      const { data, error: queryError } = await supabase
-        .from('invoices')
-        .select('*')
-        .eq('import_batch_id', batch.id);
+      // Fetch ALL invoices using pagination (Supabase has a 1000 row limit per request)
+      const allInvoices: Invoice[] = [];
+      const pageSize = 1000;
+      let page = 0;
+      let hasMore = true;
 
-      if (queryError) throw queryError;
-      
-      const invoices = (data as Invoice[]) || [];
+      while (hasMore) {
+        const from = page * pageSize;
+        const to = from + pageSize - 1;
+        
+        const { data, error: queryError } = await supabase
+          .from('invoices')
+          .select('*')
+          .eq('import_batch_id', batch.id)
+          .range(from, to);
+
+        if (queryError) throw queryError;
+
+        const pageData = (data as Invoice[]) || [];
+        allInvoices.push(...pageData);
+
+        hasMore = pageData.length === pageSize;
+        page++;
+      }
+
+      const invoices = allInvoices;
       
       if (invoices.length === 0) {
         setStats(null);
@@ -289,7 +295,7 @@ export function useDashboardStats() {
 
       const averageDaysOld = invoices.reduce((sum, inv) => sum + (inv.days_old || 0), 0) / totalInvoices || 0;
 
-      // Aging breakdown
+      // Aging breakdown - unified buckets
       const agingMap = new Map<string, { count: number; value: number }>();
       invoices.forEach(inv => {
         const bucket = getAgingBucket(inv.days_old || 0);
@@ -299,14 +305,13 @@ export function useDashboardStats() {
           value: existing.value + (inv.invoice_amount || 0),
         });
       });
+      
+      const agingOrder = ['0-30', '30-60', '60-90', '90-120', '120-180', '180-270', '270+'];
       const agingBreakdown = Array.from(agingMap.entries())
         .map(([bucket, data]) => ({ bucket, ...data }))
-        .sort((a, b) => {
-          const order = ['90-120', '120-180', '180-270', '270+'];
-          return order.indexOf(a.bucket) - order.indexOf(b.bucket);
-        });
+        .sort((a, b) => agingOrder.indexOf(a.bucket) - agingOrder.indexOf(b.bucket));
 
-      // Process state breakdown
+      // Process state breakdown - sorted by numeric prefix (01, 02, 03, etc.)
       const stateMap = new Map<string, { count: number; value: number }>();
       invoices.forEach(inv => {
         const state = inv.overall_process_state || 'Unknown';
@@ -316,9 +321,16 @@ export function useDashboardStats() {
           value: existing.value + (inv.invoice_amount || 0),
         });
       });
+      
+      // Extract numeric prefix for sorting (e.g., "03 - Header Verified" -> 3)
+      const getStateOrder = (state: string): number => {
+        const match = state.match(/^(\d+)/);
+        return match ? parseInt(match[1], 10) : 999; // Unknown states go last
+      };
+      
       const processStateBreakdown = Array.from(stateMap.entries())
         .map(([state, data]) => ({ state, ...data }))
-        .sort((a, b) => b.count - a.count);
+        .sort((a, b) => getStateOrder(a.state) - getStateOrder(b.state));
 
       // Top vendors
       const vendorMap = new Map<string, { count: number; value: number }>();
@@ -335,33 +347,38 @@ export function useDashboardStats() {
         .sort((a, b) => b.value - a.value)
         .slice(0, 10);
 
-      // PO vs Non-PO breakdown
+      // PO vs Non-PO breakdown - normalized to only PO and Non-PO categories
       const poMap = new Map<string, { count: number; value: number }>();
       invoices.forEach(inv => {
-        const poType = inv.po_type || 'Unknown';
+        // Normalize PO type - anything that's not explicitly "PO" goes to "Non-PO"
+        let poType: string;
+        const rawPoType = (inv.po_type || '').trim().toUpperCase();
+        if (rawPoType === 'PO') {
+          poType = 'PO';
+        } else if (rawPoType === 'NON-PO' || rawPoType === 'NONPO' || rawPoType === 'NON PO') {
+          poType = 'Non-PO';
+        } else if (rawPoType === '') {
+          // Empty po_type - check if there's an identifying_po value
+          poType = inv.identifying_po ? 'PO' : 'Non-PO';
+        } else {
+          poType = 'Non-PO';
+        }
+        
         const existing = poMap.get(poType) || { count: 0, value: 0 };
         poMap.set(poType, {
           count: existing.count + 1,
           value: existing.value + (inv.invoice_amount || 0),
         });
       });
+      
+      // Sort with PO first, then Non-PO
+      const poOrder = ['PO', 'Non-PO'];
       const poBreakdown = Array.from(poMap.entries())
         .map(([type, data]) => ({ type, ...data }))
-        .sort((a, b) => b.value - a.value);
+        .sort((a, b) => poOrder.indexOf(a.type) - poOrder.indexOf(b.type));
 
-      // Monthly aging breakdown (30-day intervals)
-      const monthlyBuckets = [
-        { min: 90, max: 120, bucket: '90-120', label: '90-120 days' },
-        { min: 120, max: 150, bucket: '120-150', label: '120-150 days' },
-        { min: 150, max: 180, bucket: '150-180', label: '150-180 days' },
-        { min: 180, max: 210, bucket: '180-210', label: '180-210 days' },
-        { min: 210, max: 240, bucket: '210-240', label: '210-240 days' },
-        { min: 240, max: 270, bucket: '240-270', label: '240-270 days' },
-        { min: 270, max: 300, bucket: '270-300', label: '270-300 days' },
-        { min: 300, max: 330, bucket: '300-330', label: '300-330 days' },
-        { min: 330, max: 360, bucket: '330-360', label: '330-360 days' },
-        { min: 360, max: Infinity, bucket: '360+', label: '360+ days' },
-      ];
+      // Monthly aging breakdown - all buckets
+      const monthlyBuckets = getMonthlyBuckets();
 
       const monthlyAgingBreakdown = monthlyBuckets.map(({ min, max, bucket, label }) => {
         const filtered = invoices.filter(inv => {
@@ -401,12 +418,7 @@ export function useDashboardStats() {
     
     // Listen for batch deletion events to refresh stats
     const handleBatchDeleted = () => {
-      console.log('Dashboard stats: Batch deleted event received, refreshing...');
-      // Add delay to ensure database has fully processed deletion
-      setTimeout(() => {
-        console.log('Dashboard stats: Executing refresh...');
-        fetchStats();
-      }, 800);
+      setTimeout(() => fetchStats(), 800);
     };
     
     window.addEventListener('batchDeleted', handleBatchDeleted);
@@ -438,117 +450,25 @@ export function useBatchComparison() {
 
   const fetchComparison = useCallback(async () => {
     setLoading(true);
-    console.log('Fetching batch comparison...');
     try {
-      // Get the current batch (is_current = true), excluding deleted batches
+      // Get the current batch
       const { data: currentBatchData, error: currentBatchError } = await supabase
         .from('import_batches')
         .select('*')
         .eq('is_current', true)
         .or('is_deleted.is.null,is_deleted.eq.false')
-        .single();
+        .maybeSingle();
 
       if (currentBatchError || !currentBatchData) {
-        console.log('No current batch found, using fallback logic');
-        // Fallback: use the most recent non-deleted batch if no current is set
-        const { data: recentBatches } = await supabase
-          .from('import_batches')
-          .select('*')
-          .or('is_deleted.is.null,is_deleted.eq.false')
-          .order('imported_at', { ascending: false })
-          .limit(1);
-        
-        if (!recentBatches || recentBatches.length === 0) {
-          setComparison(null);
-          return;
-        }
-        
-        const currentBatch = recentBatches[0] as ImportBatch;
-        
-        // Get the most recent non-deleted batch BEFORE the current one
-        const { data: previousBatchData } = await supabase
-          .from('import_batches')
-          .select('*')
-          .lt('imported_at', currentBatch.imported_at)
-          .or('is_deleted.is.null,is_deleted.eq.false')
-          .order('imported_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        const previousBatch = previousBatchData as ImportBatch | null;
-
-        // Get invoices for comparison
-        const { data: currentInvoices } = await supabase
-          .from('invoices')
-          .select('*')
-          .eq('import_batch_id', currentBatch.id);
-        
-        const current = (currentInvoices as Invoice[]) || [];
-        let previous: Invoice[] = [];
-        
-        if (previousBatch) {
-          const { data: prevInvoices } = await supabase
-            .from('invoices')
-            .select('*')
-            .eq('import_batch_id', previousBatch.id);
-          previous = (prevInvoices as Invoice[]) || [];
-        }
-
-        // Calculate comparison (code continues below...)
-        const currentValue = current.reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0);
-        const previousValue = previous.reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0);
-
-        const previousIds = new Set(previous.map(inv => inv.invoice_id));
-        const currentIds = new Set(current.map(inv => inv.invoice_id));
-
-        const newInvoices = current.filter(inv => !previousIds.has(inv.invoice_id));
-        const resolvedInvoices = previous.filter(inv => !currentIds.has(inv.invoice_id));
-
-        // Calculate state changes
-        const currentStateMap = new Map<string, { count: number; value: number }>();
-        const previousStateMap = new Map<string, { count: number; value: number }>();
-
-        current.forEach(inv => {
-          const state = inv.overall_process_state?.replace(/^\d+\s*-\s*/, '') || 'Unknown';
-          const existing = currentStateMap.get(state) || { count: 0, value: 0 };
-          currentStateMap.set(state, { count: existing.count + 1, value: existing.value + (inv.invoice_amount || 0) });
-        });
-
-        previous.forEach(inv => {
-          const state = inv.overall_process_state?.replace(/^\d+\s*-\s*/, '') || 'Unknown';
-          const existing = previousStateMap.get(state) || { count: 0, value: 0 };
-          previousStateMap.set(state, { count: existing.count + 1, value: existing.value + (inv.invoice_amount || 0) });
-        });
-
-        const allStates = new Set([...currentStateMap.keys(), ...previousStateMap.keys()]);
-        const stateChanges = Array.from(allStates).map(state => ({
-          state,
-          current: currentStateMap.get(state)?.count || 0,
-          previous: previousStateMap.get(state)?.count || 0,
-          change: (currentStateMap.get(state)?.count || 0) - (previousStateMap.get(state)?.count || 0),
-        })).sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
-
-        setComparison({
-          currentBatch,
-          previousBatch,
-          currentCount: current.length,
-          previousCount: previous.length,
-          currentValue,
-          previousValue,
-          newInvoicesCount: newInvoices.length,
-          resolvedInvoicesCount: resolvedInvoices.length,
-          newInvoicesValue: newInvoices.reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0),
-          resolvedInvoicesValue: resolvedInvoices.reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0),
-          stateChanges,
-        });
+        setComparison(null);
+        setLoading(false);
         return;
       }
 
       const currentBatch = currentBatchData as ImportBatch;
-      console.log(`Current batch: ${currentBatch.filename} (${currentBatch.imported_at}), ID: ${currentBatch.id}`);
 
-      // Get the most recent non-deleted batch BEFORE the current one (this ensures deleted batches are skipped)
-      const { data: previousBatchData, error: previousBatchError } = await supabase
+      // Get the most recent non-deleted batch BEFORE the current one
+      const { data: previousBatchData } = await supabase
         .from('import_batches')
         .select('*')
         .lt('imported_at', currentBatch.imported_at)
@@ -557,33 +477,55 @@ export function useBatchComparison() {
         .limit(1)
         .maybeSingle();
 
-      if (previousBatchError) {
-        console.error('Error fetching previous batch:', previousBatchError);
-      }
-
       const previousBatch = previousBatchData as ImportBatch | null;
-      if (previousBatch) {
-        console.log(`Previous batch: ${previousBatch.filename} (${previousBatch.imported_at}), ID: ${previousBatch.id}`);
-      } else {
-        console.log('No previous batch found');
-      }
 
-      // Get current batch invoices
-      const { data: currentInvoices } = await supabase
-        .from('invoices')
-        .select('*')
-        .eq('import_batch_id', currentBatch.id);
+      // Get current batch invoices with pagination
+      const current: Invoice[] = [];
+      const pageSize = 1000;
+      let currentPage = 0;
+      let hasMoreCurrent = true;
       
-      const current = (currentInvoices as Invoice[]) || [];
-
-      // Get previous batch invoices
-      let previous: Invoice[] = [];
-      if (previousBatch) {
-        const { data: prevInvoices } = await supabase
+      while (hasMoreCurrent) {
+        const from = currentPage * pageSize;
+        const to = from + pageSize - 1;
+        const { data: currentInvoices } = await supabase
           .from('invoices')
           .select('*')
-          .eq('import_batch_id', previousBatch.id);
-        previous = (prevInvoices as Invoice[]) || [];
+          .eq('import_batch_id', currentBatch.id)
+          .range(from, to);
+        
+        if (currentInvoices && currentInvoices.length > 0) {
+          current.push(...(currentInvoices as Invoice[]));
+          hasMoreCurrent = currentInvoices.length === pageSize;
+          currentPage++;
+        } else {
+          hasMoreCurrent = false;
+        }
+      }
+
+      // Get previous batch invoices with pagination
+      let previous: Invoice[] = [];
+      if (previousBatch) {
+        let prevPage = 0;
+        let hasMorePrev = true;
+        
+        while (hasMorePrev) {
+          const from = prevPage * pageSize;
+          const to = from + pageSize - 1;
+          const { data: prevInvoices } = await supabase
+            .from('invoices')
+            .select('*')
+            .eq('import_batch_id', previousBatch.id)
+            .range(from, to);
+          
+          if (prevInvoices && prevInvoices.length > 0) {
+            previous.push(...(prevInvoices as Invoice[]));
+            hasMorePrev = prevInvoices.length === pageSize;
+            prevPage++;
+          } else {
+            hasMorePrev = false;
+          }
+        }
       }
 
       // Calculate totals
@@ -621,7 +563,7 @@ export function useBatchComparison() {
         change: (currentStateMap.get(state)?.count || 0) - (previousStateMap.get(state)?.count || 0),
       })).sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
 
-      const comparisonData = {
+      setComparison({
         currentBatch,
         previousBatch,
         currentCount: current.length,
@@ -633,16 +575,7 @@ export function useBatchComparison() {
         newInvoicesValue: newInvoices.reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0),
         resolvedInvoicesValue: resolvedInvoices.reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0),
         stateChanges,
-      };
-      
-      console.log('Comparison data:', {
-        current: `${comparisonData.currentBatch.filename} (${comparisonData.currentCount} invoices, $${comparisonData.currentValue})`,
-        previous: previousBatch ? `${comparisonData.previousBatch?.filename} (${comparisonData.previousCount} invoices, $${comparisonData.previousValue})` : 'None',
-        newInvoices: comparisonData.newInvoicesCount,
-        resolvedInvoices: comparisonData.resolvedInvoicesCount,
       });
-      
-      setComparison(comparisonData);
     } catch (err) {
       console.error('Error fetching comparison:', err);
       setComparison(null);
@@ -656,17 +589,8 @@ export function useBatchComparison() {
   }, [fetchComparison]);
 
   useEffect(() => {
-    // Listen for batch deletion events to refresh comparison
-    const handleBatchDeleted = (event: Event) => {
-      const customEvent = event as CustomEvent;
-      console.log('Batch deleted event received:', customEvent.detail);
-      console.log('Refreshing comparison after batch deletion...');
-      // Add a delay to ensure database has fully processed the deletion
-      // and comparison query will find the correct previous batch
-      setTimeout(() => {
-        console.log('Executing comparison refresh...');
-        fetchComparison();
-      }, 800); // Longer delay to ensure database is fully synced
+    const handleBatchDeleted = () => {
+      setTimeout(() => fetchComparison(), 800);
     };
     
     window.addEventListener('batchDeleted', handleBatchDeleted);
@@ -679,9 +603,35 @@ export function useBatchComparison() {
   return { comparison, loading, refetch: fetchComparison };
 }
 
+// Helper function to get aging bucket based on days old
 function getAgingBucket(daysOld: number): string {
-  if (daysOld <= 120) return '90-120';
-  if (daysOld <= 180) return '120-180';
-  if (daysOld <= 270) return '180-270';
+  if (daysOld < 30) return '0-30';
+  if (daysOld < 60) return '30-60';
+  if (daysOld < 90) return '60-90';
+  if (daysOld < 120) return '90-120';
+  if (daysOld < 180) return '120-180';
+  if (daysOld < 270) return '180-270';
   return '270+';
 }
+
+// Helper function to get monthly buckets - unified for all data
+function getMonthlyBuckets() {
+  return [
+    { min: 0, max: 30, bucket: '0-30', label: '0-30 days' },
+    { min: 30, max: 60, bucket: '30-60', label: '30-60 days' },
+    { min: 60, max: 90, bucket: '60-90', label: '60-90 days' },
+    { min: 90, max: 120, bucket: '90-120', label: '90-120 days' },
+    { min: 120, max: 150, bucket: '120-150', label: '120-150 days' },
+    { min: 150, max: 180, bucket: '150-180', label: '150-180 days' },
+    { min: 180, max: 210, bucket: '180-210', label: '180-210 days' },
+    { min: 210, max: 240, bucket: '210-240', label: '210-240 days' },
+    { min: 240, max: 270, bucket: '240-270', label: '240-270 days' },
+    { min: 270, max: 300, bucket: '270-300', label: '270-300 days' },
+    { min: 300, max: 330, bucket: '300-330', label: '300-330 days' },
+    { min: 330, max: 360, bucket: '330-360', label: '330-360 days' },
+    { min: 360, max: Infinity, bucket: '360+', label: '360+ days' },
+  ];
+}
+
+// Export helper functions for use in other components
+export { getMonthlyBuckets, getAgingBucket };

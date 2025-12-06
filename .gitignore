@@ -28,3 +28,6 @@ coverage/
 
 # Docker (keep config, ignore runtime)
 .docker/
+
+# Data files
+*.csv

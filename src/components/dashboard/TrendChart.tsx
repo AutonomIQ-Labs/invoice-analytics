@@ -8,7 +8,10 @@ interface TrendChartProps {
 const formatDate = (dateStr: string) => new Date(dateStr).toLocaleDateString('en-CA', { month: 'short', day: 'numeric' });
 
 export function TrendChart({ batches }: TrendChartProps) {
-  const chartData = [...batches]
+  // Filter out deleted batches for trend calculation - only use non-deleted batches
+  const nonDeletedBatches = batches.filter(batch => !batch.is_deleted);
+  
+  const chartData = [...nonDeletedBatches]
     .sort((a, b) => new Date(a.imported_at).getTime() - new Date(b.imported_at).getTime())
     .slice(-10)
     .map(batch => ({ date: formatDate(batch.imported_at), count: batch.record_count, filename: batch.filename }));

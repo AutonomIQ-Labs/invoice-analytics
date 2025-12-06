@@ -1,11 +1,15 @@
 import Papa from 'papaparse';
 import type { Invoice } from '../types/database';
 
+// Maximum invoice amount threshold - invoices above this are considered data errors
+const MAX_INVOICE_AMOUNT = 50_000_000; // $50 million
+
 export interface ParseResult {
   invoices: Omit<Invoice, 'id' | 'imported_at'>[];
   skippedCount: number;
   skippedZeroValue: number;
   skippedPaid: number;
+  skippedOutlier: number;
   errors: string[];
 }
 
@@ -25,9 +29,16 @@ function parseDate(dateStr: string): string | null {
 
 function parseAmount(amountStr: string): number {
   if (!amountStr || amountStr.trim() === '') return 0;
-  const cleaned = amountStr.replace(/[$,"\s]/g, '');
+  
+  // Check for accounting-format negative numbers like ($1.00) or (1.00)
+  const isNegative = amountStr.includes('(') && amountStr.includes(')');
+  
+  // Remove $, commas, quotes, spaces, and parentheses
+  const cleaned = amountStr.replace(/[$,"\s()]/g, '');
   const amount = parseFloat(cleaned);
-  return isNaN(amount) ? 0 : amount;
+  
+  if (isNaN(amount)) return 0;
+  return isNegative ? -amount : amount;
 }
 
 function isPaidInvoice(paymentStatus: string): boolean {
@@ -65,7 +76,7 @@ interface CsvRow {
   [key: string]: string;
 }
 
-function mapRowToInvoice(row: CsvRow, batchId: string, headers: string[]): { invoice: Omit<Invoice, 'id' | 'imported_at'> | null; skipReason: 'zero' | 'paid' | null } {
+function mapRowToInvoice(row: CsvRow, batchId: string, headers: string[]): { invoice: Omit<Invoice, 'id' | 'imported_at'> | null; skipReason: 'zero' | 'paid' | 'outlier' | null } {
   const values = headers.map(h => row[h] || '');
   
   // Find amount
@@ -93,6 +104,11 @@ function mapRowToInvoice(row: CsvRow, batchId: string, headers: string[]): { inv
     return { invoice: null, skipReason: 'zero' };
   }
 
+  // Skip outlier invoices (likely data entry errors)
+  if (amount > MAX_INVOICE_AMOUNT) {
+    return { invoice: null, skipReason: 'outlier' };
+  }
+
   // Get payment status (index 12 based on CSV structure)
   const paymentStatus = values[12] || '';
   
@@ -103,6 +119,14 @@ function mapRowToInvoice(row: CsvRow, batchId: string, headers: string[]): { inv
 
   const getFieldByIndex = (index: number): string => values[index] || '';
 
+  // CSV columns (0-indexed):
+  // 0: Invoice Date, 1: Invoices, 2: Invoice Creation Date, 3: Business Unit Name
+  // 4: Approval Status, 5: Supplier, 6: Supplier Type, 7: Invoice Number
+  // 8: Invoice Amount, 9: Validation Status, 10: Payment Method, 11: Payment Terms Name
+  // 12: Payment Status Name, 13: Payment Status Indicator, 14: Routing Attribute 3
+  // 15: Account Coding Status, 16: Days Old, 17: Aging, 18: Invoice Type Name
+  // 19: Days from Initial Entry to Payment, 20: Custom Invoice Status
+  // 21: Overall Process State, 22: PO/Non-PO, 23: Identifying PO
   return {
     invoice: {
       invoice_date: parseDate(getFieldByIndex(0)),
@@ -124,10 +148,10 @@ function mapRowToInvoice(row: CsvRow, batchId: string, headers: string[]): { inv
       days_old: parseInt(getFieldByIndex(16)) || null,
       aging_bucket: getFieldByIndex(17),
       invoice_type: getFieldByIndex(18),
-      custom_invoice_status: getFieldByIndex(19),
-      overall_process_state: getFieldByIndex(20),
-      po_type: getFieldByIndex(21),
-      identifying_po: getFieldByIndex(22),
+      custom_invoice_status: getFieldByIndex(20),        // Column 20: Custom Invoice Status
+      overall_process_state: getFieldByIndex(21),        // Column 21: Overall Process State (e.g., "03 - Header Verified")
+      po_type: getFieldByIndex(22),                      // Column 22: PO/Non-PO
+      identifying_po: getFieldByIndex(23),               // Column 23: Identifying PO
       import_batch_id: batchId,
     },
     skipReason: null
@@ -158,6 +182,7 @@ export function parseCsvText(text: string, batchId: string): ParseResult {
   let skippedCount = 0;
   let skippedZeroValue = 0;
   let skippedPaid = 0;
+  let skippedOutlier = 0;
   const errors: string[] = [];
 
   const processedText = preprocessFile(text);
@@ -183,6 +208,7 @@ export function parseCsvText(text: string, batchId: string): ParseResult {
         skippedCount++;
         if (skipReason === 'zero') skippedZeroValue++;
         if (skipReason === 'paid') skippedPaid++;
+        if (skipReason === 'outlier') skippedOutlier++;
       }
     } catch (error) {
       errors.push(`Error parsing row`);
@@ -190,5 +216,5 @@ export function parseCsvText(text: string, batchId: string): ParseResult {
     }
   }
 
-  return { invoices, skippedCount, skippedZeroValue, skippedPaid, errors };
+  return { invoices, skippedCount, skippedZeroValue, skippedPaid, skippedOutlier, errors };
 }

@@ -17,7 +17,8 @@ interface ImportProgress {
     skipped: number; 
     skippedZeroValue: number;
     skippedPaid: number;
-    errors: string[] 
+    skippedOutlier: number;
+    errors: string[];
   };
 }
 
@@ -35,7 +36,7 @@ export function CsvUploader({ onImportComplete }: CsvUploaderProps) {
     try {
       setProgress({ status: 'parsing', message: 'Preparing import...', progress: 5 });
       
-      // Mark all existing non-deleted batches as not current
+      // Mark all current batches as not current (only one current batch at a time)
       await supabase
         .from('import_batches')
         .update({ is_current: false })
@@ -47,7 +48,13 @@ export function CsvUploader({ onImportComplete }: CsvUploaderProps) {
       // Create new batch as current
       const { data: batchData, error: batchError } = await supabase
         .from('import_batches')
-        .insert({ filename: file.name, record_count: 0, skipped_count: 0, imported_by: user?.id, is_current: true })
+        .insert({ 
+          filename: file.name, 
+          record_count: 0, 
+          skipped_count: 0, 
+          imported_by: user?.id, 
+          is_current: true
+        })
         .select()
         .single();
 
@@ -55,13 +62,13 @@ export function CsvUploader({ onImportComplete }: CsvUploaderProps) {
       const batch = batchData as ImportBatch;
 
       setProgress({ status: 'parsing', message: 'Parsing CSV file...', progress: 20 });
-      const { invoices, skippedCount, skippedZeroValue, skippedPaid, errors } = await parseCsvFile(file, batch.id);
+      const { invoices, skippedCount, skippedZeroValue, skippedPaid, skippedOutlier, errors } = await parseCsvFile(file, batch.id);
 
       if (invoices.length === 0) {
-        throw new Error('No valid invoices found. Zero-value and fully paid invoices are filtered out.');
+        throw new Error('No valid invoices found. Zero-value, fully paid, and outlier invoices (>$50M) are filtered out.');
       }
 
-      setProgress({ status: 'uploading', message: `Uploading ${invoices.length} invoices...`, progress: 40 });
+      setProgress({ status: 'uploading', message: `Uploading ${invoices.length.toLocaleString()} invoices...`, progress: 40 });
       
       const BATCH_SIZE = 500;
       let uploaded = 0;
@@ -82,7 +89,7 @@ export function CsvUploader({ onImportComplete }: CsvUploaderProps) {
         status: 'complete', 
         message: 'Import complete!', 
         progress: 100, 
-        result: { imported: invoices.length, skipped: skippedCount, skippedZeroValue, skippedPaid, errors } 
+        result: { imported: invoices.length, skipped: skippedCount, skippedZeroValue, skippedPaid, skippedOutlier, errors } 
       });
       onImportComplete?.();
     } catch (error) {
@@ -102,7 +109,9 @@ export function CsvUploader({ onImportComplete }: CsvUploaderProps) {
     if (file) handleFile(file);
   }, [handleFile]);
 
-  const reset = () => setProgress({ status: 'idle', message: '' });
+  const reset = () => {
+    setProgress({ status: 'idle', message: '' });
+  };
 
   return (
     <div className="card p-6">
@@ -147,9 +156,9 @@ export function CsvUploader({ onImportComplete }: CsvUploaderProps) {
               </svg>
             </div>
           </div>
-          <p className="text-center text-white text-lg mb-4">Import Complete!</p>
+          <p className="text-center text-white text-lg mb-6">Import Complete!</p>
           
-          <div className="grid grid-cols-3 gap-3 mb-6">
+          <div className="grid grid-cols-4 gap-3 mb-6">
             <div className="bg-slate-800/50 rounded-lg p-4 text-center">
               <p className="text-2xl font-bold text-emerald-400">{progress.result.imported.toLocaleString()}</p>
               <p className="text-xs text-slate-400">Imported</p>
@@ -161,6 +170,10 @@ export function CsvUploader({ onImportComplete }: CsvUploaderProps) {
             <div className="bg-slate-800/50 rounded-lg p-4 text-center">
               <p className="text-2xl font-bold text-blue-400">{progress.result.skippedPaid.toLocaleString()}</p>
               <p className="text-xs text-slate-400">Fully Paid</p>
+            </div>
+            <div className="bg-slate-800/50 rounded-lg p-4 text-center">
+              <p className="text-2xl font-bold text-red-400">{progress.result.skippedOutlier.toLocaleString()}</p>
+              <p className="text-xs text-slate-400">Outliers (&gt;$50M)</p>
             </div>
           </div>
 

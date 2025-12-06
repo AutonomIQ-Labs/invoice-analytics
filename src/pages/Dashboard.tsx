@@ -1,12 +1,11 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useDashboardStats, useImportBatches, useInvoices } from '../hooks/useInvoices';
+import { useDashboardStats, useImportBatches } from '../hooks/useInvoices';
 import { StatCard } from '../components/dashboard/StatCard';
 import { AgingChart } from '../components/dashboard/AgingChart';
 import { MonthlyAgingChart } from '../components/dashboard/MonthlyAgingChart';
 import { ProcessStateChart } from '../components/dashboard/ProcessStateChart';
 import { VendorTable } from '../components/dashboard/VendorTable';
-import { StuckInvoicesPanel } from '../components/dashboard/StuckInvoicesPanel';
 import { TrendChart } from '../components/dashboard/TrendChart';
 import { PoBreakdownChart } from '../components/dashboard/PoBreakdownChart';
 import { BatchComparisonPanel } from '../components/dashboard/BatchComparisonPanel';
@@ -18,7 +17,6 @@ export function Dashboard() {
   const navigate = useNavigate();
   const { stats, loading: statsLoading, currentBatch } = useDashboardStats();
   const { batches } = useImportBatches();
-  const { invoices } = useInvoices({ pageSize: 1000 });
   const [agingViewMode, setAgingViewMode] = useState<'count' | 'value'>('count');
 
   const handleStateClick = (state: string) => navigate(`/invoices?state=${encodeURIComponent(state)}`);
@@ -26,7 +24,11 @@ export function Dashboard() {
   const handlePoTypeClick = (poType: string) => navigate(`/invoices?poType=${encodeURIComponent(poType)}`);
   const handleAgingBucketClick = (bucket: string) => navigate(`/invoices?aging=${encodeURIComponent(bucket)}`);
 
-  if (statsLoading || !stats) {
+  const currentBatchInfo = currentBatch 
+    ? `Data from ${formatDate(currentBatch.imported_at)} - ${currentBatch.filename}`
+    : null;
+
+  if (statsLoading) {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="flex flex-col items-center gap-4">
@@ -39,13 +41,13 @@ export function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white">Dashboard</h1>
           <p className="text-slate-400 mt-1">
             SKG Payables Invoice Analytics
-            {currentBatch && (
-              <span className="ml-2 text-sky-400">· Data from {formatDate(currentBatch.imported_at)}</span>
+            {currentBatchInfo && (
+              <span className="ml-2 text-sky-400">{currentBatchInfo}</span>
             )}
           </p>
         </div>
@@ -57,46 +59,52 @@ export function Dashboard() {
         </button>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Total Invoices" value={stats.totalInvoices.toLocaleString()} subtitle={formatCurrency(stats.totalValue)} icon="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" color="primary" />
-        <StatCard title="Ready for Payment" value={stats.readyForPayment.count.toLocaleString()} subtitle={formatCurrency(stats.readyForPayment.value)} icon="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" color="green" />
-        <StatCard title="Requires Investigation" value={stats.requiresInvestigation.count.toLocaleString()} subtitle={formatCurrency(stats.requiresInvestigation.value)} icon="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" color="red" />
-        <StatCard title="Average Age" value={`${Math.round(stats.averageDaysOld)} days`} subtitle="Across all invoices" icon="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" color="yellow" />
-      </div>
-
-      {/* Batch Comparison Panel - Shows changes from previous import */}
-      <BatchComparisonPanel />
-
-      {/* Charts Row 1 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <span></span>
-            <div className="flex gap-1 bg-slate-700/50 rounded-lg p-1">
-              <button onClick={() => setAgingViewMode('count')} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${agingViewMode === 'count' ? 'bg-sky-500 text-white' : 'text-slate-400 hover:text-white'}`}>Count</button>
-              <button onClick={() => setAgingViewMode('value')} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${agingViewMode === 'value' ? 'bg-sky-500 text-white' : 'text-slate-400 hover:text-white'}`}>Value</button>
-            </div>
-          </div>
-          <AgingChart data={stats.agingBreakdown} viewMode={agingViewMode} />
+      {!stats ? (
+        <div className="card p-12 text-center">
+          <svg className="w-16 h-16 mx-auto mb-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          <h3 className="text-xl font-semibold text-white mb-2">No Data Available</h3>
+          <p className="text-slate-400 mb-6">Import invoice data to see analytics</p>
+          <button onClick={() => navigate('/import')} className="btn-primary">Import Data</button>
         </div>
-        <ProcessStateChart data={stats.processStateBreakdown} onStateClick={handleStateClick} />
-      </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <StatCard title="Total Invoices" value={stats.totalInvoices.toLocaleString()} subtitle={formatCurrency(stats.totalValue)} icon="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" color="primary" />
+            <StatCard title="Ready for Payment" value={stats.readyForPayment.count.toLocaleString()} subtitle={formatCurrency(stats.readyForPayment.value)} icon="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" color="green" />
+            <StatCard title="Requires Investigation" value={stats.requiresInvestigation.count.toLocaleString()} subtitle={formatCurrency(stats.requiresInvestigation.value)} icon="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" color="red" />
+            <StatCard title="Average Age" value={`${Math.round(stats.averageDaysOld)} days`} subtitle="Across all invoices" icon="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" color="yellow" />
+          </div>
 
-      {/* Monthly Aging Breakdown - Full Width */}
-      <MonthlyAgingChart data={stats.monthlyAgingBreakdown} onBucketClick={handleAgingBucketClick} />
+          <BatchComparisonPanel />
 
-      {/* Charts Row 2 - PO Breakdown and Trend */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <PoBreakdownChart data={stats.poBreakdown} onTypeClick={handlePoTypeClick} />
-        <TrendChart batches={batches} />
-      </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span></span>
+                <div className="flex gap-1 bg-slate-700/50 rounded-lg p-1">
+                  <button onClick={() => setAgingViewMode('count')} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${agingViewMode === 'count' ? 'bg-sky-500 text-white' : 'text-slate-400 hover:text-white'}`}>Count</button>
+                  <button onClick={() => setAgingViewMode('value')} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${agingViewMode === 'value' ? 'bg-sky-500 text-white' : 'text-slate-400 hover:text-white'}`}>Value</button>
+                </div>
+              </div>
+              <AgingChart data={stats.agingBreakdown} viewMode={agingViewMode} />
+            </div>
+            <ProcessStateChart data={stats.processStateBreakdown} onStateClick={handleStateClick} />
+          </div>
 
-      {/* Bottom Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <VendorTable data={stats.topVendors} onVendorClick={handleVendorClick} />
-        <StuckInvoicesPanel invoices={invoices} onInvoiceClick={(inv) => navigate(`/invoices?id=${inv.id}`)} />
-      </div>
+          <MonthlyAgingChart data={stats.monthlyAgingBreakdown} onBucketClick={handleAgingBucketClick} />
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <PoBreakdownChart data={stats.poBreakdown} onTypeClick={handlePoTypeClick} />
+            <TrendChart batches={batches} />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <VendorTable data={stats.topVendors} onVendorClick={handleVendorClick} />
+          </div>
+        </>
+      )}
     </div>
   );
 }
