@@ -108,6 +108,9 @@ export function Outliers() {
           includedValue: prev.includedValue + (newValue ? valueChange : -valueChange),
         };
       });
+
+      // Dispatch event to refresh dashboard stats
+      window.dispatchEvent(new CustomEvent('outlierChanged'));
     } catch (err) {
       console.error('Error updating invoice:', err);
     } finally {
@@ -143,6 +146,9 @@ export function Outliers() {
 
       // Refresh data
       await fetchOutliers();
+
+      // Dispatch event to refresh dashboard stats
+      window.dispatchEvent(new CustomEvent('outlierChanged'));
     } catch (err) {
       console.error('Error bulk updating:', err);
     } finally {
