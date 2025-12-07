@@ -13,6 +13,7 @@ interface UseInvoicesOptions {
   sortBy?: keyof Invoice;
   sortOrder?: 'asc' | 'desc';
   batchId?: string; // Optional: specific batch, otherwise uses current
+  includeOutliers?: boolean; // Whether to include outliers (default: respects include_in_analysis)
 }
 
 // Helper to get the current batch ID, excluding deleted batches
@@ -55,6 +56,7 @@ export function useInvoices(options: UseInvoicesOptions = {}) {
     sortBy = 'days_old',
     sortOrder = 'desc',
     batchId,
+    includeOutliers,
   } = options;
 
   const fetchInvoices = useCallback(async () => {
@@ -74,6 +76,16 @@ export function useInvoices(options: UseInvoicesOptions = {}) {
 
       let query = supabase.from('invoices').select('*', { count: 'exact' });
       query = query.eq('import_batch_id', targetBatchId);
+
+      // Filter outliers based on include_in_analysis unless explicitly including all
+      if (includeOutliers === undefined) {
+        // Default behavior: respect include_in_analysis field
+        query = query.or('include_in_analysis.is.null,include_in_analysis.eq.true');
+      } else if (!includeOutliers) {
+        // Explicitly exclude outliers
+        query = query.or('include_in_analysis.is.null,include_in_analysis.eq.true');
+      }
+      // If includeOutliers is true, don't filter - show all
 
       if (supplier) query = query.ilike('supplier', `%${supplier}%`);
       if (overallProcessState) query = query.eq('overall_process_state', overallProcessState);
@@ -98,7 +110,7 @@ export function useInvoices(options: UseInvoicesOptions = {}) {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, supplier, overallProcessState, agingBucket, minAmount, maxAmount, sortBy, sortOrder, batchId]);
+  }, [page, pageSize, supplier, overallProcessState, agingBucket, minAmount, maxAmount, sortBy, sortOrder, batchId, includeOutliers]);
 
   useEffect(() => {
     fetchInvoices();
@@ -221,6 +233,7 @@ export interface DashboardStats {
   processStateBreakdown: { state: string; count: number; value: number }[];
   topVendors: { supplier: string; count: number; value: number }[];
   poBreakdown: { type: string; count: number; value: number }[];
+  outlierStats: { total: number; included: number; excluded: number };
 }
 
 export function useDashboardStats() {
@@ -242,7 +255,9 @@ export function useDashboardStats() {
       }
 
       // Fetch ALL invoices using pagination (Supabase has a 1000 row limit per request)
+      // Only include invoices where include_in_analysis is true or null
       const allInvoices: Invoice[] = [];
+      const allInvoicesWithOutliers: Invoice[] = [];
       const pageSize = 1000;
       let page = 0;
       let hasMore = true;
@@ -260,13 +275,29 @@ export function useDashboardStats() {
         if (queryError) throw queryError;
 
         const pageData = (data as Invoice[]) || [];
-        allInvoices.push(...pageData);
+        allInvoicesWithOutliers.push(...pageData);
+        
+        // Filter to only include invoices marked for analysis
+        const includedInvoices = pageData.filter(inv => 
+          inv.include_in_analysis === true || inv.include_in_analysis === null || inv.include_in_analysis === undefined
+        );
+        allInvoices.push(...includedInvoices);
 
         hasMore = pageData.length === pageSize;
         page++;
       }
 
       const invoices = allInvoices;
+      
+      // Calculate outlier stats from all invoices
+      const outlierInvoices = allInvoicesWithOutliers.filter(inv => inv.is_outlier === true);
+      const includedOutliers = outlierInvoices.filter(inv => inv.include_in_analysis === true);
+      const excludedOutliers = outlierInvoices.filter(inv => inv.include_in_analysis === false);
+      const outlierStats = {
+        total: outlierInvoices.length,
+        included: includedOutliers.length,
+        excluded: excludedOutliers.length,
+      };
       
       if (invoices.length === 0) {
         setStats(null);
@@ -405,6 +436,7 @@ export function useDashboardStats() {
         processStateBreakdown,
         topVendors,
         poBreakdown,
+        outlierStats,
       });
     } catch (err) {
       setError(err as Error);
@@ -420,11 +452,18 @@ export function useDashboardStats() {
     const handleBatchDeleted = () => {
       setTimeout(() => fetchStats(), 800);
     };
+
+    // Listen for outlier changes to refresh stats
+    const handleOutlierChanged = () => {
+      setTimeout(() => fetchStats(), 500);
+    };
     
     window.addEventListener('batchDeleted', handleBatchDeleted);
+    window.addEventListener('outlierChanged', handleOutlierChanged);
     
     return () => {
       window.removeEventListener('batchDeleted', handleBatchDeleted);
+      window.removeEventListener('outlierChanged', handleOutlierChanged);
     };
   }, [fetchStats]);
 
@@ -479,7 +518,7 @@ export function useBatchComparison() {
 
       const previousBatch = previousBatchData as ImportBatch | null;
 
-      // Get current batch invoices with pagination
+      // Get current batch invoices with pagination (respecting include_in_analysis)
       const current: Invoice[] = [];
       const pageSize = 1000;
       let currentPage = 0;
@@ -492,6 +531,7 @@ export function useBatchComparison() {
           .from('invoices')
           .select('*')
           .eq('import_batch_id', currentBatch.id)
+          .or('include_in_analysis.is.null,include_in_analysis.eq.true')
           .range(from, to);
         
         if (currentInvoices && currentInvoices.length > 0) {
@@ -516,6 +556,7 @@ export function useBatchComparison() {
             .from('invoices')
             .select('*')
             .eq('import_batch_id', previousBatch.id)
+            .or('include_in_analysis.is.null,include_in_analysis.eq.true')
             .range(from, to);
           
           if (prevInvoices && prevInvoices.length > 0) {

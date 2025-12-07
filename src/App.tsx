@@ -6,6 +6,7 @@ import { Dashboard } from './pages/Dashboard';
 import { Invoices } from './pages/Invoices';
 import { Import } from './pages/Import';
 import { Aging } from './pages/Aging';
+import { Outliers } from './pages/Outliers';
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
               <Route path="/" element={<Dashboard />} />
               <Route path="/invoices" element={<Invoices />} />
               <Route path="/aging" element={<Aging />} />
+              <Route path="/outliers" element={<Outliers />} />
               <Route path="/import" element={<Import />} />
             </Routes>
           </Layout>

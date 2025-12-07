@@ -16,8 +16,10 @@ interface ImportProgress {
     imported: number; 
     skipped: number; 
     skippedZeroValue: number;
-    skippedPaid: number;
-    skippedOutlier: number;
+    skippedFullyPaid: number;
+    outlierCount: number;
+    outlierHighValue: number;
+    outlierNegative: number;
     errors: string[];
   };
 }
@@ -62,10 +64,19 @@ export function CsvUploader({ onImportComplete }: CsvUploaderProps) {
       const batch = batchData as ImportBatch;
 
       setProgress({ status: 'parsing', message: 'Parsing CSV file...', progress: 20 });
-      const { invoices, skippedCount, skippedZeroValue, skippedPaid, skippedOutlier, errors } = await parseCsvFile(file, batch.id);
+      const { 
+        invoices, 
+        skippedCount, 
+        skippedZeroValue, 
+        skippedFullyPaid,
+        outlierCount,
+        outlierHighValue,
+        outlierNegative,
+        errors 
+      } = await parseCsvFile(file, batch.id);
 
       if (invoices.length === 0) {
-        throw new Error('No valid invoices found. Zero-value, fully paid, and outlier invoices (>$50M) are filtered out.');
+        throw new Error('No valid invoices found. Zero-value and fully paid (process state 09) invoices are filtered out.');
       }
 
       setProgress({ status: 'uploading', message: `Uploading ${invoices.length.toLocaleString()} invoices...`, progress: 40 });
@@ -89,7 +100,16 @@ export function CsvUploader({ onImportComplete }: CsvUploaderProps) {
         status: 'complete', 
         message: 'Import complete!', 
         progress: 100, 
-        result: { imported: invoices.length, skipped: skippedCount, skippedZeroValue, skippedPaid, skippedOutlier, errors } 
+        result: { 
+          imported: invoices.length, 
+          skipped: skippedCount, 
+          skippedZeroValue, 
+          skippedFullyPaid,
+          outlierCount,
+          outlierHighValue,
+          outlierNegative,
+          errors 
+        } 
       });
       onImportComplete?.();
     } catch (error) {
@@ -129,7 +149,7 @@ export function CsvUploader({ onImportComplete }: CsvUploaderProps) {
             Browse Files
             <input type="file" accept=".csv,.txt" onChange={handleFileInput} className="hidden" />
           </label>
-          <p className="text-slate-500 text-xs mt-4">Zero-value and fully paid invoices will be automatically filtered out</p>
+          <p className="text-slate-500 text-xs mt-4">Zero-value invoices and "09 - Fully Paid" invoices are filtered out</p>
         </div>
       )}
 
@@ -158,7 +178,8 @@ export function CsvUploader({ onImportComplete }: CsvUploaderProps) {
           </div>
           <p className="text-center text-white text-lg mb-6">Import Complete!</p>
           
-          <div className="grid grid-cols-4 gap-3 mb-6">
+          {/* Main Stats */}
+          <div className="grid grid-cols-3 gap-3 mb-4">
             <div className="bg-slate-800/50 rounded-lg p-4 text-center">
               <p className="text-2xl font-bold text-emerald-400">{progress.result.imported.toLocaleString()}</p>
               <p className="text-xs text-slate-400">Imported</p>
@@ -168,14 +189,39 @@ export function CsvUploader({ onImportComplete }: CsvUploaderProps) {
               <p className="text-xs text-slate-400">Zero Value</p>
             </div>
             <div className="bg-slate-800/50 rounded-lg p-4 text-center">
-              <p className="text-2xl font-bold text-blue-400">{progress.result.skippedPaid.toLocaleString()}</p>
+              <p className="text-2xl font-bold text-blue-400">{progress.result.skippedFullyPaid.toLocaleString()}</p>
               <p className="text-xs text-slate-400">Fully Paid</p>
             </div>
-            <div className="bg-slate-800/50 rounded-lg p-4 text-center">
-              <p className="text-2xl font-bold text-red-400">{progress.result.skippedOutlier.toLocaleString()}</p>
-              <p className="text-xs text-slate-400">Outliers (&gt;$50M)</p>
-            </div>
           </div>
+
+          {/* Outlier Stats */}
+          {progress.result.outlierCount > 0 && (
+            <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-4 mb-4">
+              <div className="flex items-center gap-2 mb-3">
+                <svg className="w-5 h-5 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <span className="text-orange-400 font-medium">Outliers Detected</span>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="text-center">
+                  <p className="text-xl font-bold text-orange-400">{progress.result.outlierCount.toLocaleString()}</p>
+                  <p className="text-xs text-slate-400">Total Outliers</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-xl font-bold text-red-400">{progress.result.outlierHighValue.toLocaleString()}</p>
+                  <p className="text-xs text-slate-400">&gt;$50K</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-xl font-bold text-purple-400">{progress.result.outlierNegative.toLocaleString()}</p>
+                  <p className="text-xs text-slate-400">Negative</p>
+                </div>
+              </div>
+              <p className="text-xs text-orange-400/70 mt-3 text-center">
+                Outliers are imported but excluded from analysis by default. Manage them in the Outliers page.
+              </p>
+            </div>
+          )}
 
           <div className="text-center text-sm text-slate-400 mb-4">
             Total skipped: {progress.result.skipped.toLocaleString()} invoices

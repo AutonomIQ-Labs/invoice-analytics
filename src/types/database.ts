@@ -25,6 +25,10 @@ export interface Invoice {
   identifying_po: string | null;
   import_batch_id: string | null;
   imported_at: string;
+  // Outlier tracking fields
+  is_outlier?: boolean;
+  outlier_reason?: 'high_value' | 'negative' | null;
+  include_in_analysis?: boolean;
 }
 
 export interface ImportBatch {
@@ -36,6 +40,16 @@ export interface ImportBatch {
   imported_by: string | null;
   is_current: boolean;
   is_deleted?: boolean;
+}
+
+export interface OutlierSettings {
+  id: string;
+  user_id: string;
+  include_high_value: boolean;
+  include_negative: boolean;
+  high_value_threshold: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface BatchComparison {
@@ -50,4 +64,3 @@ export interface BatchComparison {
     currentState: string;
   }[];
 }
-

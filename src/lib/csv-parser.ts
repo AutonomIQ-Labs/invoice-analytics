@@ -1,15 +1,17 @@
 import Papa from 'papaparse';
 import type { Invoice } from '../types/database';
 
-// Maximum invoice amount threshold - invoices above this are considered data errors
-const MAX_INVOICE_AMOUNT = 50_000_000; // $50 million
+// Outlier threshold - invoices above this are flagged as outliers
+const OUTLIER_THRESHOLD = 50_000; // $50,000
 
 export interface ParseResult {
   invoices: Omit<Invoice, 'id' | 'imported_at'>[];
   skippedCount: number;
   skippedZeroValue: number;
-  skippedPaid: number;
-  skippedOutlier: number;
+  skippedFullyPaid: number;
+  outlierCount: number;
+  outlierHighValue: number;
+  outlierNegative: number;
   errors: string[];
 }
 
@@ -41,14 +43,11 @@ function parseAmount(amountStr: string): number {
   return isNegative ? -amount : amount;
 }
 
-function isPaidInvoice(paymentStatus: string): boolean {
-  if (!paymentStatus) return false;
-  const status = paymentStatus.toLowerCase().trim();
-  // Check for various "paid" indicators
-  return status === 'paid' || 
-         status === 'fully paid' || 
-         status.includes('paid in full') ||
-         (status.includes('paid') && !status.includes('not paid') && !status.includes('unpaid'));
+function isFullyPaidState(processState: string): boolean {
+  if (!processState) return false;
+  const state = processState.trim();
+  // Check for "09 - Fully Paid" process state
+  return state.startsWith('09') || state.toLowerCase().includes('fully paid');
 }
 
 function preprocessFile(text: string): string {
@@ -76,7 +75,14 @@ interface CsvRow {
   [key: string]: string;
 }
 
-function mapRowToInvoice(row: CsvRow, batchId: string, headers: string[]): { invoice: Omit<Invoice, 'id' | 'imported_at'> | null; skipReason: 'zero' | 'paid' | 'outlier' | null } {
+interface MapRowResult {
+  invoice: Omit<Invoice, 'id' | 'imported_at'> | null;
+  skipReason: 'zero' | 'fully_paid' | null;
+  isOutlier: boolean;
+  outlierReason: 'high_value' | 'negative' | null;
+}
+
+function mapRowToInvoice(row: CsvRow, batchId: string, headers: string[]): MapRowResult {
   const values = headers.map(h => row[h] || '');
   
   // Find amount
@@ -101,20 +107,27 @@ function mapRowToInvoice(row: CsvRow, batchId: string, headers: string[]): { inv
   
   // Skip zero-value invoices
   if (amount === 0) {
-    return { invoice: null, skipReason: 'zero' };
+    return { invoice: null, skipReason: 'zero', isOutlier: false, outlierReason: null };
   }
 
-  // Skip outlier invoices (likely data entry errors)
-  if (amount > MAX_INVOICE_AMOUNT) {
-    return { invoice: null, skipReason: 'outlier' };
-  }
-
-  // Get payment status (index 12 based on CSV structure)
-  const paymentStatus = values[12] || '';
+  // Get overall process state (index 21 based on CSV structure)
+  const overallProcessState = values[21] || '';
   
-  // Skip fully paid invoices
-  if (isPaidInvoice(paymentStatus)) {
-    return { invoice: null, skipReason: 'paid' };
+  // Skip fully paid invoices based on Overall Process State (not payment status)
+  if (isFullyPaidState(overallProcessState)) {
+    return { invoice: null, skipReason: 'fully_paid', isOutlier: false, outlierReason: null };
+  }
+
+  // Check for outliers - flag them but don't skip
+  let isOutlier = false;
+  let outlierReason: 'high_value' | 'negative' | null = null;
+  
+  if (amount > OUTLIER_THRESHOLD) {
+    isOutlier = true;
+    outlierReason = 'high_value';
+  } else if (amount < 0) {
+    isOutlier = true;
+    outlierReason = 'negative';
   }
 
   const getFieldByIndex = (index: number): string => values[index] || '';
@@ -141,20 +154,25 @@ function mapRowToInvoice(row: CsvRow, batchId: string, headers: string[]): { inv
       validation_status: getFieldByIndex(9),
       payment_method: getFieldByIndex(10),
       payment_terms: getFieldByIndex(11),
-      payment_status: paymentStatus,
+      payment_status: getFieldByIndex(12),
       payment_status_indicator: getFieldByIndex(13),
       routing_attribute: getFieldByIndex(14),
       account_coding_status: getFieldByIndex(15),
       days_old: parseInt(getFieldByIndex(16)) || null,
       aging_bucket: getFieldByIndex(17),
       invoice_type: getFieldByIndex(18),
-      custom_invoice_status: getFieldByIndex(20),        // Column 20: Custom Invoice Status
-      overall_process_state: getFieldByIndex(21),        // Column 21: Overall Process State (e.g., "03 - Header Verified")
-      po_type: getFieldByIndex(22),                      // Column 22: PO/Non-PO
-      identifying_po: getFieldByIndex(23),               // Column 23: Identifying PO
+      custom_invoice_status: getFieldByIndex(20),
+      overall_process_state: overallProcessState,
+      po_type: getFieldByIndex(22),
+      identifying_po: getFieldByIndex(23),
       import_batch_id: batchId,
+      is_outlier: isOutlier,
+      outlier_reason: outlierReason,
+      include_in_analysis: !isOutlier, // Outliers excluded by default
     },
-    skipReason: null
+    skipReason: null,
+    isOutlier,
+    outlierReason
   };
 }
 
@@ -181,8 +199,10 @@ export function parseCsvText(text: string, batchId: string): ParseResult {
   const invoices: Omit<Invoice, 'id' | 'imported_at'>[] = [];
   let skippedCount = 0;
   let skippedZeroValue = 0;
-  let skippedPaid = 0;
-  let skippedOutlier = 0;
+  let skippedFullyPaid = 0;
+  let outlierCount = 0;
+  let outlierHighValue = 0;
+  let outlierNegative = 0;
   const errors: string[] = [];
 
   const processedText = preprocessFile(text);
@@ -201,14 +221,18 @@ export function parseCsvText(text: string, batchId: string): ParseResult {
 
   for (const row of results.data) {
     try {
-      const { invoice, skipReason } = mapRowToInvoice(row, batchId, headers);
+      const { invoice, skipReason, isOutlier, outlierReason } = mapRowToInvoice(row, batchId, headers);
       if (invoice) {
         invoices.push(invoice);
+        if (isOutlier) {
+          outlierCount++;
+          if (outlierReason === 'high_value') outlierHighValue++;
+          if (outlierReason === 'negative') outlierNegative++;
+        }
       } else {
         skippedCount++;
         if (skipReason === 'zero') skippedZeroValue++;
-        if (skipReason === 'paid') skippedPaid++;
-        if (skipReason === 'outlier') skippedOutlier++;
+        if (skipReason === 'fully_paid') skippedFullyPaid++;
       }
     } catch (error) {
       errors.push(`Error parsing row`);
@@ -216,5 +240,14 @@ export function parseCsvText(text: string, batchId: string): ParseResult {
     }
   }
 
-  return { invoices, skippedCount, skippedZeroValue, skippedPaid, skippedOutlier, errors };
+  return { 
+    invoices, 
+    skippedCount, 
+    skippedZeroValue, 
+    skippedFullyPaid,
+    outlierCount,
+    outlierHighValue,
+    outlierNegative,
+    errors 
+  };
 }
