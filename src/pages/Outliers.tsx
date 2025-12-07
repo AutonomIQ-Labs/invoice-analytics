@@ -20,7 +20,8 @@ export function Outliers() {
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const [filter, setFilter] = useState<'all' | 'high_value' | 'negative'>('all');
   const [showIncluded, setShowIncluded] = useState<'all' | 'included' | 'excluded'>('all');
-  const [thresholdInput, setThresholdInput] = useState('100000');
+  const [minAmountInput, setMinAmountInput] = useState('50000');
+  const [maxAmountInput, setMaxAmountInput] = useState('');
   const [updateMessage, setUpdateMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [currentBatchId, setCurrentBatchId] = useState<string | null>(null);
 
@@ -151,7 +152,12 @@ export function Outliers() {
     }
   };
 
-  const bulkToggle = async (include: boolean, type?: 'high_value' | 'negative', minAmount?: number) => {
+  const bulkToggle = async (
+    include: boolean, 
+    type?: 'high_value' | 'negative', 
+    minAmount?: number,
+    maxAmount?: number
+  ) => {
     if (!currentBatchId) {
       setUpdateMessage({ type: 'error', text: 'No batch selected' });
       return;
@@ -168,8 +174,14 @@ export function Outliers() {
         invoicesToUpdate = invoicesToUpdate.filter(o => o.outlier_reason === type);
       }
       
-      if (minAmount !== undefined && type === 'high_value') {
-        invoicesToUpdate = invoicesToUpdate.filter(o => (o.invoice_amount || 0) >= minAmount);
+      // Apply amount range filter for high value invoices
+      if (type === 'high_value') {
+        if (minAmount !== undefined) {
+          invoicesToUpdate = invoicesToUpdate.filter(o => (o.invoice_amount || 0) >= minAmount);
+        }
+        if (maxAmount !== undefined) {
+          invoicesToUpdate = invoicesToUpdate.filter(o => (o.invoice_amount || 0) <= maxAmount);
+        }
       }
 
       if (invoicesToUpdate.length === 0) {
@@ -213,13 +225,28 @@ export function Outliers() {
     }
   };
 
-  const handleIncludeAboveThreshold = () => {
-    const threshold = parseFloat(thresholdInput.replace(/,/g, ''));
-    if (isNaN(threshold) || threshold < 0) {
-      setUpdateMessage({ type: 'error', text: 'Please enter a valid amount' });
+  const handleAmountRangeAction = (include: boolean) => {
+    const minVal = minAmountInput.trim() ? parseFloat(minAmountInput.replace(/,/g, '')) : undefined;
+    const maxVal = maxAmountInput.trim() ? parseFloat(maxAmountInput.replace(/,/g, '')) : undefined;
+    
+    if (minVal !== undefined && isNaN(minVal)) {
+      setUpdateMessage({ type: 'error', text: 'Please enter a valid minimum amount' });
       return;
     }
-    bulkToggle(true, 'high_value', threshold);
+    if (maxVal !== undefined && isNaN(maxVal)) {
+      setUpdateMessage({ type: 'error', text: 'Please enter a valid maximum amount' });
+      return;
+    }
+    if (minVal !== undefined && maxVal !== undefined && minVal > maxVal) {
+      setUpdateMessage({ type: 'error', text: 'Minimum amount cannot be greater than maximum' });
+      return;
+    }
+    if (minVal === undefined && maxVal === undefined) {
+      setUpdateMessage({ type: 'error', text: 'Please enter at least a minimum or maximum amount' });
+      return;
+    }
+    
+    bulkToggle(include, 'high_value', minVal, maxVal);
   };
 
   const filteredOutliers = outliers.filter(o => {
@@ -400,28 +427,48 @@ export function Outliers() {
           )}
         </div>
 
-        {/* High Value Threshold Input */}
+        {/* High Value Amount Range Controls */}
         <div className="mt-4 pt-4 border-t border-slate-700/50">
           <div className="flex flex-wrap items-center gap-3">
-            <span className="text-sm text-slate-400">Include high value invoices above:</span>
+            <span className="text-sm text-slate-400 font-medium">High Value Range:</span>
             <div className="flex items-center gap-2">
-              <span className="text-slate-400">$</span>
+              <span className="text-slate-400 text-sm">Min $</span>
               <input
                 type="text"
-                value={thresholdInput}
-                onChange={(e) => setThresholdInput(e.target.value.replace(/[^0-9.,]/g, ''))}
-                className="w-32 px-3 py-1.5 text-sm bg-slate-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-sky-500"
-                placeholder="100000"
+                value={minAmountInput}
+                onChange={(e) => setMinAmountInput(e.target.value.replace(/[^0-9.,]/g, ''))}
+                className="w-28 px-3 py-1.5 text-sm bg-slate-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-sky-500"
+                placeholder="50000"
               />
+              <span className="text-slate-400 text-sm">to Max $</span>
+              <input
+                type="text"
+                value={maxAmountInput}
+                onChange={(e) => setMaxAmountInput(e.target.value.replace(/[^0-9.,]/g, ''))}
+                className="w-28 px-3 py-1.5 text-sm bg-slate-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-sky-500"
+                placeholder="No limit"
+              />
+            </div>
+            <div className="flex gap-2">
               <button
-                onClick={handleIncludeAboveThreshold}
+                onClick={() => handleAmountRangeAction(true)}
                 disabled={bulkUpdating}
-                className="px-3 py-1.5 text-sm font-medium text-red-400 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-3 py-1.5 text-sm font-medium text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Include Above Threshold
+                Include Range
+              </button>
+              <button
+                onClick={() => handleAmountRangeAction(false)}
+                disabled={bulkUpdating}
+                className="px-3 py-1.5 text-sm font-medium text-slate-400 bg-slate-500/10 hover:bg-slate-500/20 border border-slate-500/30 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Exclude Range
               </button>
             </div>
           </div>
+          <p className="text-xs text-slate-500 mt-2">
+            Leave Max empty for no upper limit. Examples: $50K-$100K includes invoices between those amounts. $100K with no max includes all invoices $100K and above.
+          </p>
         </div>
       </div>
 
