@@ -20,6 +20,9 @@ export function Outliers() {
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const [filter, setFilter] = useState<'all' | 'high_value' | 'negative'>('all');
   const [showIncluded, setShowIncluded] = useState<'all' | 'included' | 'excluded'>('all');
+  const [thresholdInput, setThresholdInput] = useState('100000');
+  const [updateMessage, setUpdateMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [currentBatchId, setCurrentBatchId] = useState<string | null>(null);
 
   const fetchOutliers = useCallback(async () => {
     setLoading(true);
@@ -35,9 +38,12 @@ export function Outliers() {
       if (!batchData) {
         setOutliers([]);
         setStats(null);
+        setCurrentBatchId(null);
         setLoading(false);
         return;
       }
+
+      setCurrentBatchId(batchData.id);
 
       // Fetch ALL outliers using pagination (Supabase has 1000 row limit per request)
       const allOutliers: Invoice[] = [];
@@ -72,10 +78,10 @@ export function Outliers() {
       // Calculate stats
       const highValueCount = outlierData.filter(o => o.outlier_reason === 'high_value').length;
       const negativeCount = outlierData.filter(o => o.outlier_reason === 'negative').length;
-      const includedCount = outlierData.filter(o => o.include_in_analysis).length;
-      const excludedCount = outlierData.filter(o => !o.include_in_analysis).length;
+      const includedCount = outlierData.filter(o => o.include_in_analysis === true).length;
+      const excludedCount = outlierData.filter(o => o.include_in_analysis !== true).length;
       const totalValue = outlierData.reduce((sum, o) => sum + Math.abs(o.invoice_amount || 0), 0);
-      const includedValue = outlierData.filter(o => o.include_in_analysis).reduce((sum, o) => sum + Math.abs(o.invoice_amount || 0), 0);
+      const includedValue = outlierData.filter(o => o.include_in_analysis === true).reduce((sum, o) => sum + Math.abs(o.invoice_amount || 0), 0);
 
       setStats({
         totalOutliers: outlierData.length,
@@ -88,6 +94,7 @@ export function Outliers() {
       });
     } catch (err) {
       console.error('Error fetching outliers:', err);
+      setUpdateMessage({ type: 'error', text: 'Failed to load outliers' });
     } finally {
       setLoading(false);
     }
@@ -97,10 +104,18 @@ export function Outliers() {
     fetchOutliers();
   }, [fetchOutliers]);
 
+  // Clear message after 5 seconds
+  useEffect(() => {
+    if (updateMessage) {
+      const timer = setTimeout(() => setUpdateMessage(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [updateMessage]);
+
   const toggleInclusion = async (invoice: Invoice) => {
     setUpdating(invoice.id);
     try {
-      const newValue = !invoice.include_in_analysis;
+      const newValue = invoice.include_in_analysis === true ? false : true;
       const { error } = await supabase
         .from('invoices')
         .update({ include_in_analysis: newValue })
@@ -130,53 +145,87 @@ export function Outliers() {
       window.dispatchEvent(new CustomEvent('outlierChanged'));
     } catch (err) {
       console.error('Error updating invoice:', err);
+      setUpdateMessage({ type: 'error', text: 'Failed to update invoice' });
     } finally {
       setUpdating(null);
     }
   };
 
-  const bulkToggle = async (include: boolean, type?: 'high_value' | 'negative') => {
+  const bulkToggle = async (include: boolean, type?: 'high_value' | 'negative', minAmount?: number) => {
+    if (!currentBatchId) {
+      setUpdateMessage({ type: 'error', text: 'No batch selected' });
+      return;
+    }
+
     setBulkUpdating(true);
+    setUpdateMessage(null);
+    
     try {
-      // Get current batch ID
-      const { data: batchData } = await supabase
-        .from('import_batches')
-        .select('id')
-        .eq('is_current', true)
-        .or('is_deleted.is.null,is_deleted.eq.false')
-        .maybeSingle();
-
-      if (!batchData) return;
-
-      let query = supabase
-        .from('invoices')
-        .update({ include_in_analysis: include })
-        .eq('import_batch_id', batchData.id)
-        .eq('is_outlier', true);
-
+      // Get IDs of invoices to update based on local data (to handle filtering by amount)
+      let invoicesToUpdate = outliers.filter(o => o.is_outlier === true);
+      
       if (type) {
-        query = query.eq('outlier_reason', type);
+        invoicesToUpdate = invoicesToUpdate.filter(o => o.outlier_reason === type);
+      }
+      
+      if (minAmount !== undefined && type === 'high_value') {
+        invoicesToUpdate = invoicesToUpdate.filter(o => (o.invoice_amount || 0) >= minAmount);
       }
 
-      const { error } = await query;
-      if (error) throw error;
+      if (invoicesToUpdate.length === 0) {
+        setUpdateMessage({ type: 'error', text: 'No invoices match the criteria' });
+        setBulkUpdating(false);
+        return;
+      }
+
+      // Update in batches of 100 to avoid hitting Supabase limits
+      const batchSize = 100;
+      let updated = 0;
+      
+      for (let i = 0; i < invoicesToUpdate.length; i += batchSize) {
+        const batch = invoicesToUpdate.slice(i, i + batchSize);
+        const ids = batch.map(inv => inv.id);
+        
+        const { error } = await supabase
+          .from('invoices')
+          .update({ include_in_analysis: include })
+          .in('id', ids);
+
+        if (error) throw error;
+        updated += batch.length;
+      }
 
       // Refresh data
       await fetchOutliers();
 
       // Dispatch event to refresh dashboard stats
       window.dispatchEvent(new CustomEvent('outlierChanged'));
+
+      setUpdateMessage({ 
+        type: 'success', 
+        text: `Successfully ${include ? 'included' : 'excluded'} ${updated.toLocaleString()} invoices` 
+      });
     } catch (err) {
       console.error('Error bulk updating:', err);
+      setUpdateMessage({ type: 'error', text: 'Failed to update invoices. Please try again.' });
     } finally {
       setBulkUpdating(false);
     }
   };
 
+  const handleIncludeAboveThreshold = () => {
+    const threshold = parseFloat(thresholdInput.replace(/,/g, ''));
+    if (isNaN(threshold) || threshold < 0) {
+      setUpdateMessage({ type: 'error', text: 'Please enter a valid amount' });
+      return;
+    }
+    bulkToggle(true, 'high_value', threshold);
+  };
+
   const filteredOutliers = outliers.filter(o => {
     if (filter !== 'all' && o.outlier_reason !== filter) return false;
-    if (showIncluded === 'included' && !o.include_in_analysis) return false;
-    if (showIncluded === 'excluded' && o.include_in_analysis) return false;
+    if (showIncluded === 'included' && o.include_in_analysis !== true) return false;
+    if (showIncluded === 'excluded' && o.include_in_analysis === true) return false;
     return true;
   });
 
@@ -199,6 +248,28 @@ export function Outliers() {
         <h1 className="text-2xl font-bold text-white">Outlier Management</h1>
         <p className="text-slate-400 mt-1">Review and manage invoices flagged as outliers (&gt;$50K or negative amounts)</p>
       </div>
+
+      {/* Update Message */}
+      {updateMessage && (
+        <div className={`p-4 rounded-lg border ${
+          updateMessage.type === 'success' 
+            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' 
+            : 'bg-red-500/10 border-red-500/30 text-red-400'
+        }`}>
+          <div className="flex items-center gap-2">
+            {updateMessage.type === 'success' ? (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            ) : (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            )}
+            <span>{updateMessage.text}</span>
+          </div>
+        </div>
+      )}
 
       {/* Stats Cards */}
       {stats && (
@@ -293,38 +364,31 @@ export function Outliers() {
       <div className="card p-4">
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-2">
-            <span className="text-sm text-slate-400">Bulk Actions:</span>
+            <span className="text-sm text-slate-400 font-medium">Bulk Actions:</span>
           </div>
           
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => bulkToggle(true)}
               disabled={bulkUpdating}
-              className="px-3 py-1.5 text-sm font-medium text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-lg transition-colors disabled:opacity-50"
+              className="px-3 py-1.5 text-sm font-medium text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Include All
             </button>
             <button
               onClick={() => bulkToggle(false)}
               disabled={bulkUpdating}
-              className="px-3 py-1.5 text-sm font-medium text-slate-400 bg-slate-500/10 hover:bg-slate-500/20 border border-slate-500/30 rounded-lg transition-colors disabled:opacity-50"
+              className="px-3 py-1.5 text-sm font-medium text-slate-400 bg-slate-500/10 hover:bg-slate-500/20 border border-slate-500/30 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Exclude All
             </button>
-            <div className="w-px h-6 bg-slate-700"></div>
-            <button
-              onClick={() => bulkToggle(true, 'high_value')}
-              disabled={bulkUpdating}
-              className="px-3 py-1.5 text-sm font-medium text-red-400 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded-lg transition-colors disabled:opacity-50"
-            >
-              Include High Value
-            </button>
+            <div className="w-px h-8 bg-slate-700"></div>
             <button
               onClick={() => bulkToggle(true, 'negative')}
               disabled={bulkUpdating}
-              className="px-3 py-1.5 text-sm font-medium text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 rounded-lg transition-colors disabled:opacity-50"
+              className="px-3 py-1.5 text-sm font-medium text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Include Negative
+              Include All Negative
             </button>
           </div>
 
@@ -334,6 +398,30 @@ export function Outliers() {
               <span className="text-sm">Updating...</span>
             </div>
           )}
+        </div>
+
+        {/* High Value Threshold Input */}
+        <div className="mt-4 pt-4 border-t border-slate-700/50">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-sm text-slate-400">Include high value invoices above:</span>
+            <div className="flex items-center gap-2">
+              <span className="text-slate-400">$</span>
+              <input
+                type="text"
+                value={thresholdInput}
+                onChange={(e) => setThresholdInput(e.target.value.replace(/[^0-9.,]/g, ''))}
+                className="w-32 px-3 py-1.5 text-sm bg-slate-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-sky-500"
+                placeholder="100000"
+              />
+              <button
+                onClick={handleIncludeAboveThreshold}
+                disabled={bulkUpdating}
+                className="px-3 py-1.5 text-sm font-medium text-red-400 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Include Above Threshold
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -381,7 +469,7 @@ export function Outliers() {
           </div>
 
           <div className="ml-auto text-sm text-slate-400">
-            Showing {filteredOutliers.length} of {outliers.length} outliers
+            Showing {filteredOutliers.length.toLocaleString()} of {outliers.length.toLocaleString()} outliers
           </div>
         </div>
       </div>
@@ -412,18 +500,18 @@ export function Outliers() {
               </thead>
               <tbody className="divide-y divide-slate-700/50">
                 {filteredOutliers.map(invoice => (
-                  <tr key={invoice.id} className={`hover:bg-slate-800/30 ${!invoice.include_in_analysis ? 'opacity-60' : ''}`}>
+                  <tr key={invoice.id} className={`hover:bg-slate-800/30 ${invoice.include_in_analysis !== true ? 'opacity-60' : ''}`}>
                     <td className="px-4 py-3">
                       <button
                         onClick={() => toggleInclusion(invoice)}
                         disabled={updating === invoice.id}
                         className={`w-10 h-6 rounded-full transition-colors relative ${
-                          invoice.include_in_analysis ? 'bg-emerald-500' : 'bg-slate-600'
+                          invoice.include_in_analysis === true ? 'bg-emerald-500' : 'bg-slate-600'
                         } ${updating === invoice.id ? 'opacity-50' : ''}`}
                       >
                         <span
                           className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
-                            invoice.include_in_analysis ? 'left-5' : 'left-1'
+                            invoice.include_in_analysis === true ? 'left-5' : 'left-1'
                           }`}
                         />
                         {updating === invoice.id && (
@@ -490,4 +578,3 @@ export function Outliers() {
     </div>
   );
 }
-
