@@ -39,17 +39,34 @@ export function Outliers() {
         return;
       }
 
-      // Fetch all outliers for current batch
-      const { data, error } = await supabase
-        .from('invoices')
-        .select('*')
-        .eq('import_batch_id', batchData.id)
-        .eq('is_outlier', true)
-        .order('invoice_amount', { ascending: false });
+      // Fetch ALL outliers using pagination (Supabase has 1000 row limit per request)
+      const allOutliers: Invoice[] = [];
+      const pageSize = 1000;
+      let page = 0;
+      let hasMore = true;
 
-      if (error) throw error;
+      while (hasMore) {
+        const from = page * pageSize;
+        const to = from + pageSize - 1;
 
-      const outlierData = (data as Invoice[]) || [];
+        const { data, error } = await supabase
+          .from('invoices')
+          .select('*')
+          .eq('import_batch_id', batchData.id)
+          .eq('is_outlier', true)
+          .order('invoice_amount', { ascending: false })
+          .range(from, to);
+
+        if (error) throw error;
+
+        const pageData = (data as Invoice[]) || [];
+        allOutliers.push(...pageData);
+
+        hasMore = pageData.length === pageSize;
+        page++;
+      }
+
+      const outlierData = allOutliers;
       setOutliers(outlierData);
 
       // Calculate stats
