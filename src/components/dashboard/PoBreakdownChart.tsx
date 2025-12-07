@@ -25,6 +25,15 @@ const formatCurrency = (value: number) => new Intl.NumberFormat('en-CA', {
 }).format(value);
 
 export function PoBreakdownChart({ data, onTypeClick }: PoBreakdownChartProps) {
+  if (!data || data.length === 0) {
+    return (
+      <div className="card p-6">
+        <h3 className="text-lg font-semibold text-white mb-4">PO vs Non-PO Invoices</h3>
+        <div className="h-48 flex items-center justify-center text-slate-500">No data available</div>
+      </div>
+    );
+  }
+
   const chartData = data.map(item => ({
     ...item,
     name: item.type,
@@ -56,7 +65,7 @@ export function PoBreakdownChart({ data, onTypeClick }: PoBreakdownChartProps) {
       <div className="flex items-center gap-6">
         {/* Pie Chart */}
         <div className="h-48 w-48 flex-shrink-0">
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={100}>
             <PieChart>
               <Pie
                 data={chartData}

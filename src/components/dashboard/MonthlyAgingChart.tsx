@@ -81,6 +81,15 @@ export function MonthlyAgingChart({ data, onBucketClick }: MonthlyAgingChartProp
     return null;
   };
 
+  if (!data || data.length === 0) {
+    return (
+      <div className="card p-6">
+        <h3 className="text-lg font-semibold text-white mb-4">Monthly Aging Breakdown</h3>
+        <div className="h-80 flex items-center justify-center text-slate-500">No data available</div>
+      </div>
+    );
+  }
+
   return (
     <div className="card p-6">
       <div className="flex items-center justify-between mb-4">
@@ -169,7 +178,7 @@ export function MonthlyAgingChart({ data, onBucketClick }: MonthlyAgingChartProp
       </div>
 
       <div className="h-80">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={200} minHeight={200}>
           {chartType === 'bar' ? (
             <BarChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 30 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#334155" />

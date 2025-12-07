@@ -20,11 +20,20 @@ const formatCurrency = (value: number) => {
 export function AgingChart({ data, viewMode }: AgingChartProps) {
   const chartData = data.map((item, index) => ({ ...item, fill: COLORS[index % COLORS.length] }));
 
+  if (!data || data.length === 0) {
+    return (
+      <div className="card p-6">
+        <h3 className="text-lg font-semibold text-white mb-4">Aging Breakdown</h3>
+        <div className="h-72 flex items-center justify-center text-slate-500">No data available</div>
+      </div>
+    );
+  }
+
   return (
     <div className="card p-6">
       <h3 className="text-lg font-semibold text-white mb-4">Aging Breakdown</h3>
       <div className="h-72">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={200} minHeight={200}>
           <BarChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 20 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
             <XAxis dataKey="bucket" stroke="#94a3b8" tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={{ stroke: '#475569' }} />

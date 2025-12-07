@@ -58,6 +58,15 @@ export function ProcessStateChart({ data, onStateClick }: ProcessStateChartProps
     return null;
   };
 
+  if (!data || data.length === 0) {
+    return (
+      <div className="card p-6">
+        <h3 className="text-lg font-semibold text-white mb-4">Process State Distribution</h3>
+        <div className="h-64 flex items-center justify-center text-slate-500">No data available</div>
+      </div>
+    );
+  }
+
   return (
     <div className="card p-6">
       <div className="flex items-center justify-between mb-4">
@@ -83,7 +92,7 @@ export function ProcessStateChart({ data, onStateClick }: ProcessStateChartProps
       </div>
       
       <div className="h-64">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={200} minHeight={200}>
           <BarChart data={chartData} margin={{ top: 5, right: 5, left: 5, bottom: 25 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
             <XAxis 
