@@ -12,6 +12,7 @@ interface MonthlyAgingData {
 interface MonthlyAgingChartProps {
   data: MonthlyAgingData[];
   onBucketClick?: (bucket: string) => void;
+  onRangeClick?: (minDays: number, maxDays?: number) => void;
 }
 
 // Gradient colors from cool to hot
@@ -32,7 +33,7 @@ const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD', notation: 'compact', maximumFractionDigits: 1 }).format(value);
 };
 
-export function MonthlyAgingChart({ data, onBucketClick }: MonthlyAgingChartProps) {
+export function MonthlyAgingChart({ data, onBucketClick, onRangeClick }: MonthlyAgingChartProps) {
   const [viewMode, setViewMode] = useState<'count' | 'value'>('value');
   const [chartType, setChartType] = useState<'bar' | 'area'>('bar');
 
@@ -138,35 +139,49 @@ export function MonthlyAgingChart({ data, onBucketClick }: MonthlyAgingChartProp
       </div>
 
       {/* Summary Stats - Dynamic based on data and viewMode */}
+      {/* Note: maxDays values match the label's upper bound (e.g., 0-90 passes maxDays=89 for days_old <= 89) */}
+      {/* Since the query uses lte (<=), maxDays should be upperBound - 1 to include days 0-89 for "0-90 days" bucket */}
       <div className="grid gap-3 mb-4 grid-cols-4">
-        <div className="bg-slate-800/50 rounded-lg p-3 text-center">
+        <button 
+          onClick={() => onRangeClick?.(0, 89)}
+          className="bg-slate-800/50 rounded-lg p-3 text-center hover:bg-slate-700/50 transition-colors cursor-pointer"
+        >
           <p className="text-lg font-bold text-emerald-400">
             {viewMode === 'count' 
               ? data.filter(d => d.daysMin < 90).reduce((s, d) => s + d.count, 0).toLocaleString()
               : formatCurrency(data.filter(d => d.daysMin < 90).reduce((s, d) => s + d.value, 0))
             }
           </p>
-          <p className="text-xs text-slate-500">0-90 days</p>
-        </div>
-        <div className="bg-slate-800/50 rounded-lg p-3 text-center">
+          <p className="text-xs text-slate-500">0-89 days</p>
+        </button>
+        <button 
+          onClick={() => onRangeClick?.(90, 179)}
+          className="bg-slate-800/50 rounded-lg p-3 text-center hover:bg-slate-700/50 transition-colors cursor-pointer"
+        >
           <p className="text-lg font-bold text-cyan-400">
             {viewMode === 'count'
               ? data.filter(d => d.daysMin >= 90 && d.daysMin < 180).reduce((s, d) => s + d.count, 0).toLocaleString()
               : formatCurrency(data.filter(d => d.daysMin >= 90 && d.daysMin < 180).reduce((s, d) => s + d.value, 0))
             }
           </p>
-          <p className="text-xs text-slate-500">90-180 days</p>
-        </div>
-        <div className="bg-slate-800/50 rounded-lg p-3 text-center">
+          <p className="text-xs text-slate-500">90-179 days</p>
+        </button>
+        <button 
+          onClick={() => onRangeClick?.(180, 269)}
+          className="bg-slate-800/50 rounded-lg p-3 text-center hover:bg-slate-700/50 transition-colors cursor-pointer"
+        >
           <p className="text-lg font-bold text-purple-400">
             {viewMode === 'count'
               ? data.filter(d => d.daysMin >= 180 && d.daysMin < 270).reduce((s, d) => s + d.count, 0).toLocaleString()
               : formatCurrency(data.filter(d => d.daysMin >= 180 && d.daysMin < 270).reduce((s, d) => s + d.value, 0))
             }
           </p>
-          <p className="text-xs text-slate-500">180-270 days</p>
-        </div>
-        <div className="bg-slate-800/50 rounded-lg p-3 text-center">
+          <p className="text-xs text-slate-500">180-269 days</p>
+        </button>
+        <button 
+          onClick={() => onRangeClick?.(270)}
+          className="bg-slate-800/50 rounded-lg p-3 text-center hover:bg-slate-700/50 transition-colors cursor-pointer"
+        >
           <p className="text-lg font-bold text-red-400">
             {viewMode === 'count'
               ? data.filter(d => d.daysMin >= 270).reduce((s, d) => s + d.count, 0).toLocaleString()
@@ -174,7 +189,7 @@ export function MonthlyAgingChart({ data, onBucketClick }: MonthlyAgingChartProp
             }
           </p>
           <p className="text-xs text-slate-500">270+ days</p>
-        </div>
+        </button>
       </div>
 
       <div className="h-80">

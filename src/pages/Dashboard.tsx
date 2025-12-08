@@ -22,7 +22,32 @@ export function Dashboard() {
   const handleStateClick = (state: string) => navigate(`/invoices?state=${encodeURIComponent(state)}`);
   const handleVendorClick = (vendor: string) => navigate(`/invoices?vendor=${encodeURIComponent(vendor)}`);
   const handlePoTypeClick = (poType: string) => navigate(`/invoices?poType=${encodeURIComponent(poType)}`);
-  const handleAgingBucketClick = (bucket: string) => navigate(`/invoices?aging=${encodeURIComponent(bucket)}`);
+  
+  // Handle monthly aging bucket clicks by filtering on days_old range, not aging_bucket column
+  const handleAgingBucketClick = (bucket: string) => {
+    // Parse the bucket string to get min/max days (e.g., "90-120" -> minDays=90, maxDays=119)
+    // or "360+" -> minDays=360
+    if (bucket.endsWith('+')) {
+      const minDays = parseInt(bucket.replace('+', ''));
+      navigate(`/invoices?minDays=${minDays}`);
+    } else {
+      const parts = bucket.split('-');
+      if (parts.length === 2) {
+        const minDays = parseInt(parts[0]);
+        const maxDays = parseInt(parts[1]) - 1; // -1 because the range is exclusive on the upper bound
+        navigate(`/invoices?minDays=${minDays}&maxDays=${maxDays}`);
+      }
+    }
+  };
+  
+  // Handle range clicks from summary stats (e.g., 0-90 days, 90-180 days)
+  const handleAgingRangeClick = (minDays: number, maxDays?: number) => {
+    if (maxDays !== undefined) {
+      navigate(`/invoices?minDays=${minDays}&maxDays=${maxDays}`);
+    } else {
+      navigate(`/invoices?minDays=${minDays}`);
+    }
+  };
 
   const currentBatchInfo = currentBatch 
     ? `Data from ${formatDate(currentBatch.imported_at)} - ${currentBatch.filename}`
@@ -93,7 +118,7 @@ export function Dashboard() {
             <ProcessStateChart data={stats.processStateBreakdown} onStateClick={handleStateClick} />
           </div>
 
-          <MonthlyAgingChart data={stats.monthlyAgingBreakdown} onBucketClick={handleAgingBucketClick} />
+          <MonthlyAgingChart data={stats.monthlyAgingBreakdown} onBucketClick={handleAgingBucketClick} onRangeClick={handleAgingRangeClick} />
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <PoBreakdownChart data={stats.poBreakdown} onTypeClick={handlePoTypeClick} />

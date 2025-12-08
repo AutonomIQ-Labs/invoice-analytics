@@ -70,7 +70,13 @@ export function Aging() {
         }
 
         const pageData = (data as Invoice[]) || [];
-        allInvoices.push(...pageData);
+        
+        // Filter to only include invoices marked for analysis (exclude outliers that are not included)
+        const includedInvoices = pageData.filter(inv => 
+          inv.include_in_analysis === true || inv.include_in_analysis === null || inv.include_in_analysis === undefined
+        );
+        allInvoices.push(...includedInvoices);
+        
         hasMore = pageData.length === pageSize;
         page++;
       }
@@ -123,8 +129,15 @@ export function Aging() {
     fetchData();
     
     const handleBatchDeleted = () => fetchData();
+    const handleOutlierChanged = () => fetchData();
+    
     window.addEventListener('batchDeleted', handleBatchDeleted);
-    return () => window.removeEventListener('batchDeleted', handleBatchDeleted);
+    window.addEventListener('outlierChanged', handleOutlierChanged);
+    
+    return () => {
+      window.removeEventListener('batchDeleted', handleBatchDeleted);
+      window.removeEventListener('outlierChanged', handleOutlierChanged);
+    };
   }, []);
 
   const totalInvoices = bucketData.reduce((sum, b) => sum + b.count, 0);

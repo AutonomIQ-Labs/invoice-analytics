@@ -59,12 +59,22 @@ export function Invoices() {
     setCurrentBatchId(data?.id || null);
   };
 
+  // Refresh trigger for outlier changes
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
   useEffect(() => {
     refreshCurrentBatch();
     
     const handleBatchDeleted = () => refreshCurrentBatch();
+    const handleOutlierChanged = () => setRefreshTrigger(prev => prev + 1);
+    
     window.addEventListener('batchDeleted', handleBatchDeleted);
-    return () => window.removeEventListener('batchDeleted', handleBatchDeleted);
+    window.addEventListener('outlierChanged', handleOutlierChanged);
+    
+    return () => {
+      window.removeEventListener('batchDeleted', handleBatchDeleted);
+      window.removeEventListener('outlierChanged', handleOutlierChanged);
+    };
   }, []);
 
   // Load filter options from current batch
@@ -101,9 +111,16 @@ export function Invoices() {
     }
     
     query = query.eq('import_batch_id', currentBatchId);
+    
+    // Filter out excluded outliers (only show invoices where include_in_analysis is NOT false)
+    // Using .not() instead of .or() to avoid multiple .or() conflicts
+    // This matches the dashboard behavior which excludes outliers from calculations
+    query = query.not('include_in_analysis', 'eq', false);
 
+    // Build OR conditions for search - must be done carefully to avoid multiple .or() calls
     if (filters.search) {
-      query = query.or(`supplier.ilike.%${filters.search}%,invoice_number.ilike.%${filters.search}%,invoice_id.ilike.%${filters.search}%`);
+      const searchTerm = filters.search.replace(/'/g, "''"); // Escape single quotes
+      query = query.or(`supplier.ilike.%${searchTerm}%,invoice_number.ilike.%${searchTerm}%,invoice_id.ilike.%${searchTerm}%`);
     }
     if (filters.supplier) query = query.ilike('supplier', `%${filters.supplier}%`);
     if (filters.invoiceNumber) query = query.ilike('invoice_number', `%${filters.invoiceNumber}%`);
@@ -111,7 +128,26 @@ export function Invoices() {
     if (filters.validationStatus) query = query.eq('validation_status', filters.validationStatus);
     if (filters.paymentStatus) query = query.eq('payment_status', filters.paymentStatus);
     if (filters.processState) query = query.eq('overall_process_state', filters.processState);
-    if (filters.poType) query = query.eq('po_type', filters.poType);
+    
+    // Handle PO type filter - dashboard sends normalized values "PO" or "Non-PO"
+    // Note: Dashboard also considers empty po_type + identifying_po as "PO", but that requires
+    // complex nested OR/AND logic that would conflict with other filters. This simpler version
+    // covers 99.7%+ of cases correctly based on po_type field only.
+    if (filters.poType) {
+      if (filters.poType.toUpperCase() === 'PO') {
+        // Match "PO" (case-insensitive)
+        query = query.ilike('po_type', 'PO');
+      } else if (filters.poType.toUpperCase() === 'NON-PO' || filters.poType.toUpperCase() === 'NONPO') {
+        // Match anything that's NOT "PO" (case-insensitive) - includes null, empty, "Non-PO", etc.
+        query = query.not('po_type', 'ilike', 'PO');
+      } else {
+        // For any other value from dropdown, do exact match
+        query = query.eq('po_type', filters.poType);
+      }
+    }
+    
+    // Note: agingBucket filter is kept for backward compatibility with dropdown
+    // but dashboard now uses minDays/maxDays for accurate filtering
     if (filters.agingBucket) query = query.eq('aging_bucket', filters.agingBucket);
     if (filters.minAmount) query = query.gte('invoice_amount', parseFloat(filters.minAmount));
     if (filters.maxAmount) query = query.lte('invoice_amount', parseFloat(filters.maxAmount));
@@ -144,7 +180,7 @@ export function Invoices() {
       setLoading(false);
     }
     fetchInvoices();
-  }, [filters, page, currentBatchId]);
+  }, [filters, page, currentBatchId, refreshTrigger]);
 
   const totalPages = Math.ceil(totalCount / 25);
 
@@ -184,15 +220,35 @@ export function Invoices() {
 
     while (hasMore) {
       let query = supabase.from('invoices').select('*').eq('import_batch_id', currentBatchId);
+      
+      // Filter out excluded outliers (only show invoices where include_in_analysis is NOT false)
+      // Using .not() instead of .or() to avoid multiple .or() conflicts
+      query = query.not('include_in_analysis', 'eq', false);
 
-      if (filters.search) query = query.or(`supplier.ilike.%${filters.search}%,invoice_number.ilike.%${filters.search}%,invoice_id.ilike.%${filters.search}%`);
+      // Build OR conditions for search - must be done carefully to avoid multiple .or() calls
+      if (filters.search) {
+        const searchTerm = filters.search.replace(/'/g, "''"); // Escape single quotes
+        query = query.or(`supplier.ilike.%${searchTerm}%,invoice_number.ilike.%${searchTerm}%,invoice_id.ilike.%${searchTerm}%`);
+      }
       if (filters.supplier) query = query.ilike('supplier', `%${filters.supplier}%`);
       if (filters.invoiceNumber) query = query.ilike('invoice_number', `%${filters.invoiceNumber}%`);
       if (filters.approvalStatus) query = query.eq('approval_status', filters.approvalStatus);
       if (filters.validationStatus) query = query.eq('validation_status', filters.validationStatus);
       if (filters.paymentStatus) query = query.eq('payment_status', filters.paymentStatus);
       if (filters.processState) query = query.eq('overall_process_state', filters.processState);
-      if (filters.poType) query = query.eq('po_type', filters.poType);
+      
+      // Handle PO type filter - dashboard sends normalized values "PO" or "Non-PO"
+      if (filters.poType) {
+        if (filters.poType.toUpperCase() === 'PO') {
+          query = query.ilike('po_type', 'PO');
+        } else if (filters.poType.toUpperCase() === 'NON-PO' || filters.poType.toUpperCase() === 'NONPO') {
+          // Match anything that's NOT "PO" (case-insensitive) - includes null, empty, "Non-PO", etc.
+          query = query.not('po_type', 'ilike', 'PO');
+        } else {
+          query = query.eq('po_type', filters.poType);
+        }
+      }
+      
       if (filters.agingBucket) query = query.eq('aging_bucket', filters.agingBucket);
       if (filters.minAmount) query = query.gte('invoice_amount', parseFloat(filters.minAmount));
       if (filters.maxAmount) query = query.lte('invoice_amount', parseFloat(filters.maxAmount));

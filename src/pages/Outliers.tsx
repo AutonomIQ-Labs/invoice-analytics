@@ -2,6 +2,17 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import type { Invoice } from '../types/database';
 
+// HTML escape helper to prevent XSS in print output
+const escapeHtml = (str: string | null | undefined): string => {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+};
+
 interface OutlierStats {
   totalOutliers: number;
   highValueCount: number;
@@ -22,8 +33,19 @@ export function Outliers() {
   const [showIncluded, setShowIncluded] = useState<'all' | 'included' | 'excluded'>('all');
   const [minAmountInput, setMinAmountInput] = useState('50000');
   const [maxAmountInput, setMaxAmountInput] = useState('');
+  
+  // Additional filters for export/print
+  const [searchTerm, setSearchTerm] = useState('');
+  const [vendorFilter, setVendorFilter] = useState('');
+  const [processStateFilter, setProcessStateFilter] = useState('');
+  const [minAmountFilter, setMinAmountFilter] = useState('');
+  const [maxAmountFilter, setMaxAmountFilter] = useState('');
+  const [minDaysFilter, setMinDaysFilter] = useState('');
+  const [maxDaysFilter, setMaxDaysFilter] = useState('');
   const [updateMessage, setUpdateMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [currentBatchId, setCurrentBatchId] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [printing, setPrinting] = useState(false);
 
   const fetchOutliers = useCallback(async () => {
     setLoading(true);
@@ -79,10 +101,11 @@ export function Outliers() {
       // Calculate stats
       const highValueCount = outlierData.filter(o => o.outlier_reason === 'high_value').length;
       const negativeCount = outlierData.filter(o => o.outlier_reason === 'negative').length;
-      const includedCount = outlierData.filter(o => o.include_in_analysis === true).length;
-      const excludedCount = outlierData.filter(o => o.include_in_analysis !== true).length;
+      // Treat null/undefined as "included" (consistent with Aging & Invoices pages)
+      const includedCount = outlierData.filter(o => o.include_in_analysis === true || o.include_in_analysis === null || o.include_in_analysis === undefined).length;
+      const excludedCount = outlierData.filter(o => o.include_in_analysis === false).length;
       const totalValue = outlierData.reduce((sum, o) => sum + Math.abs(o.invoice_amount || 0), 0);
-      const includedValue = outlierData.filter(o => o.include_in_analysis === true).reduce((sum, o) => sum + Math.abs(o.invoice_amount || 0), 0);
+      const includedValue = outlierData.filter(o => o.include_in_analysis === true || o.include_in_analysis === null || o.include_in_analysis === undefined).reduce((sum, o) => sum + Math.abs(o.invoice_amount || 0), 0);
 
       setStats({
         totalOutliers: outlierData.length,
@@ -249,12 +272,287 @@ export function Outliers() {
     bulkToggle(include, 'high_value', minVal, maxVal);
   };
 
+  // Get unique process states for dropdown
+  const uniqueProcessStates = [...new Set(outliers.map(o => o.overall_process_state).filter(Boolean))].sort() as string[];
+
   const filteredOutliers = outliers.filter(o => {
+    // Type filter
     if (filter !== 'all' && o.outlier_reason !== filter) return false;
-    if (showIncluded === 'included' && o.include_in_analysis !== true) return false;
-    if (showIncluded === 'excluded' && o.include_in_analysis === true) return false;
+    // Inclusion status filter - treat null/undefined as "included" (consistent with Aging & Invoices pages)
+    const isIncluded = o.include_in_analysis === true || o.include_in_analysis === null || o.include_in_analysis === undefined;
+    if (showIncluded === 'included' && !isIncluded) return false;
+    if (showIncluded === 'excluded' && isIncluded) return false;
+    // Search term (vendor, invoice number, invoice ID)
+    if (searchTerm) {
+      const search = searchTerm.toLowerCase();
+      const matchesSearch = 
+        (o.supplier?.toLowerCase().includes(search)) ||
+        (o.invoice_number?.toLowerCase().includes(search)) ||
+        (o.invoice_id?.toLowerCase().includes(search));
+      if (!matchesSearch) return false;
+    }
+    // Vendor filter
+    if (vendorFilter && !o.supplier?.toLowerCase().includes(vendorFilter.toLowerCase())) return false;
+    // Process state filter
+    if (processStateFilter && o.overall_process_state !== processStateFilter) return false;
+    // Amount range filter - uses actual amount (not absolute) so negative amounts can be filtered
+    if (minAmountFilter) {
+      const minAmt = parseFloat(minAmountFilter.replace(/,/g, ''));
+      if (!isNaN(minAmt) && (o.invoice_amount || 0) < minAmt) return false;
+    }
+    if (maxAmountFilter) {
+      const maxAmt = parseFloat(maxAmountFilter.replace(/,/g, ''));
+      if (!isNaN(maxAmt) && (o.invoice_amount || 0) > maxAmt) return false;
+    }
+    // Days old filter
+    if (minDaysFilter) {
+      const minDays = parseInt(minDaysFilter);
+      if (!isNaN(minDays) && (o.days_old || 0) < minDays) return false;
+    }
+    if (maxDaysFilter) {
+      const maxDays = parseInt(maxDaysFilter);
+      if (!isNaN(maxDays) && (o.days_old || 0) > maxDays) return false;
+    }
     return true;
   });
+  
+  // Check if any filters are active
+  const hasActiveFilters = filter !== 'all' || showIncluded !== 'all' || searchTerm || vendorFilter || 
+    processStateFilter || minAmountFilter || maxAmountFilter || minDaysFilter || maxDaysFilter;
+  
+  // Clear all filters
+  const clearAllFilters = () => {
+    setFilter('all');
+    setShowIncluded('all');
+    setSearchTerm('');
+    setVendorFilter('');
+    setProcessStateFilter('');
+    setMinAmountFilter('');
+    setMaxAmountFilter('');
+    setMinDaysFilter('');
+    setMaxDaysFilter('');
+  };
+
+  // Export to CSV function
+  const exportToCsv = () => {
+    setExporting(true);
+    try {
+      const dataToExport = filteredOutliers;
+      
+      if (dataToExport.length === 0) {
+        setUpdateMessage({ type: 'error', text: 'No data to export' });
+        setExporting(false);
+        return;
+      }
+
+      // Define CSV headers
+      const headers = [
+        'Invoice Number',
+        'Invoice ID',
+        'Supplier',
+        'Amount',
+        'Days Old',
+        'Outlier Type',
+        'Included in Analysis',
+        'Invoice Date',
+        'Process State',
+        'Approval Status',
+        'Validation Status',
+        'Payment Status',
+        'PO Type',
+        'PO Number',
+        'Aging Bucket'
+      ];
+
+      // Convert data to CSV rows
+      const rows = dataToExport.map(invoice => [
+        invoice.invoice_number || '',
+        invoice.invoice_id || '',
+        invoice.supplier || '',
+        invoice.invoice_amount?.toString() || '0',
+        invoice.days_old?.toString() || '0',
+        invoice.outlier_reason === 'high_value' ? 'High Value (>$50K)' : 'Negative',
+        invoice.include_in_analysis === false ? 'No' : 'Yes',
+        invoice.invoice_date || '',
+        invoice.overall_process_state || '',
+        invoice.approval_status || '',
+        invoice.validation_status || '',
+        invoice.payment_status || '',
+        invoice.po_type || '',
+        invoice.identifying_po || '',
+        invoice.aging_bucket || ''
+      ]);
+
+      // Build CSV content
+      const csvContent = [
+        headers.join(','),
+        ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      ].join('\n');
+
+      // Create and download file
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      
+      const filterLabel = filter === 'all' ? 'all-types' : filter === 'high_value' ? 'high-value' : 'negative';
+      const statusLabel = showIncluded === 'all' ? 'all-status' : showIncluded;
+      const filterSuffix = hasActiveFilters ? '_filtered' : '';
+      link.download = `outliers_${filterLabel}_${statusLabel}${filterSuffix}_${new Date().toISOString().split('T')[0]}.csv`;
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      setUpdateMessage({ type: 'success', text: `Exported ${dataToExport.length.toLocaleString()} outliers to CSV` });
+    } catch (err) {
+      console.error('Export error:', err);
+      setUpdateMessage({ type: 'error', text: 'Failed to export data' });
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // Print report handler
+  const printReport = async () => {
+    setPrinting(true);
+    try {
+      const dataToprint = filteredOutliers;
+      
+      if (dataToprint.length === 0) {
+        setUpdateMessage({ type: 'error', text: 'No data to print' });
+        setPrinting(false);
+        return;
+      }
+
+      const filterLabel = filter === 'all' ? 'All Types' : filter === 'high_value' ? 'High Value (>$50K)' : 'Negative';
+      const statusLabel = showIncluded === 'all' ? 'All' : showIncluded.charAt(0).toUpperCase() + showIncluded.slice(1);
+      
+      // Build filter summary for print
+      const activeFiltersList: string[] = [];
+      if (filter !== 'all') activeFiltersList.push(`Type: ${filterLabel}`);
+      if (showIncluded !== 'all') activeFiltersList.push(`Status: ${statusLabel}`);
+      if (searchTerm) activeFiltersList.push(`Search: "${searchTerm}"`);
+      if (vendorFilter) activeFiltersList.push(`Vendor: ${vendorFilter}`);
+      if (processStateFilter) activeFiltersList.push(`Process State: ${processStateFilter}`);
+      if (minAmountFilter || maxAmountFilter) activeFiltersList.push(`Amount: $${minAmountFilter || '0'} - $${maxAmountFilter || '∞'}`);
+      if (minDaysFilter || maxDaysFilter) activeFiltersList.push(`Days Old: ${minDaysFilter || '0'} - ${maxDaysFilter || '∞'}`);
+      const filtersSummary = activeFiltersList.length > 0 ? activeFiltersList.join(' | ') : 'No filters applied';
+
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) { 
+        alert('Please allow popups to print the report'); 
+        setPrinting(false);
+        return; 
+      }
+
+      // Build table rows
+      const rows = dataToprint.map(inv => `
+        <tr>
+          <td>${inv.include_in_analysis === false ? '<span style="color: #ef4444;">Excluded</span>' : '<span style="color: #10b981;">Included</span>'}</td>
+          <td>${inv.outlier_reason === 'high_value' ? '> $50K' : 'Negative'}</td>
+          <td>${inv.invoice_number || inv.invoice_id || '-'}</td>
+          <td>${inv.supplier || '-'}</td>
+          <td style="text-align: right; ${(inv.invoice_amount || 0) < 0 ? 'color: #8b5cf6;' : 'color: #ef4444;'}">${formatCurrency(inv.invoice_amount)}</td>
+          <td>${inv.overall_process_state || '-'}</td>
+          <td>${inv.days_old ?? '-'}</td>
+        </tr>
+      `).join('');
+
+      // Calculate summary
+      const totalValue = dataToprint.reduce((sum, inv) => sum + Math.abs(inv.invoice_amount || 0), 0);
+      // Treat null/undefined as "included" (consistent with Aging & Invoices pages)
+      const includedCount = dataToprint.filter(inv => inv.include_in_analysis === true || inv.include_in_analysis === null || inv.include_in_analysis === undefined).length;
+      const excludedCount = dataToprint.filter(inv => inv.include_in_analysis === false).length;
+      const highValueCount = dataToprint.filter(inv => inv.outlier_reason === 'high_value').length;
+      const negativeCount = dataToprint.filter(inv => inv.outlier_reason === 'negative').length;
+
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Outlier Report - ${new Date().toLocaleDateString('en-CA')}</title>
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: Arial, sans-serif; padding: 20px; color: #333; font-size: 11px; }
+            .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #f97316; padding-bottom: 15px; }
+            .header h1 { color: #f97316; font-size: 24px; margin-bottom: 5px; }
+            .header p { color: #666; margin-top: 3px; }
+            .filters { background: #f1f5f9; padding: 10px; border-radius: 6px; margin-top: 10px; font-size: 10px; color: #475569; }
+            .summary { display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; }
+            .summary-card { flex: 1; min-width: 120px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; text-align: center; }
+            .summary-card .value { font-size: 18px; font-weight: bold; color: #f97316; }
+            .summary-card .label { font-size: 10px; color: #64748b; margin-top: 3px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+            th { background: #f1f5f9; padding: 10px 8px; text-align: left; font-size: 10px; text-transform: uppercase; color: #475569; border-bottom: 2px solid #e2e8f0; }
+            td { padding: 8px; border-bottom: 1px solid #e2e8f0; font-size: 10px; }
+            tr:nth-child(even) { background: #f8fafc; }
+            .footer { margin-top: 20px; text-align: center; font-size: 10px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 15px; }
+            @media print { @page { size: landscape; margin: 0.5in; } }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>Outlier Report</h1>
+            <p>Generated: ${new Date().toLocaleString()}</p>
+            <div class="filters"><strong>Filters:</strong> ${filtersSummary}</div>
+          </div>
+          <div class="summary">
+            <div class="summary-card">
+              <div class="value">${dataToprint.length.toLocaleString()}</div>
+              <div class="label">Total Outliers</div>
+            </div>
+            <div class="summary-card">
+              <div class="value">${highValueCount.toLocaleString()}</div>
+              <div class="label">High Value</div>
+            </div>
+            <div class="summary-card">
+              <div class="value">${negativeCount.toLocaleString()}</div>
+              <div class="label">Negative</div>
+            </div>
+            <div class="summary-card">
+              <div class="value">${includedCount.toLocaleString()}</div>
+              <div class="label">Included</div>
+            </div>
+            <div class="summary-card">
+              <div class="value">${excludedCount.toLocaleString()}</div>
+              <div class="label">Excluded</div>
+            </div>
+            <div class="summary-card">
+              <div class="value">${formatCurrency(totalValue)}</div>
+              <div class="label">Total Value</div>
+            </div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Type</th>
+                <th>Invoice #</th>
+                <th>Supplier</th>
+                <th style="text-align: right;">Amount</th>
+                <th>Process State</th>
+                <th>Days Old</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+          <div class="footer">
+            <p>SKG Payables Invoice Analytics - Outlier Report</p>
+          </div>
+          <script>window.onload = function() { window.print(); }</script>
+        </body>
+        </html>
+      `);
+      printWindow.document.close();
+    } catch (error) {
+      console.error('Print failed:', error);
+      setUpdateMessage({ type: 'error', text: 'Print failed. Please try again.' });
+    } finally {
+      setPrinting(false);
+    }
+  };
 
   const formatCurrency = (amount: number | null) => {
     if (amount === null) return '$0.00';
@@ -271,9 +569,41 @@ export function Outliers() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-white">Outlier Management</h1>
-        <p className="text-slate-400 mt-1">Review and manage invoices flagged as outliers (&gt;$50K or negative amounts)</p>
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Outlier Management</h1>
+          <p className="text-slate-400 mt-1">Review and manage invoices flagged as outliers (&gt;$50K or negative amounts)</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={exportToCsv}
+            disabled={exporting || filteredOutliers.length === 0}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {exporting ? (
+              <div className="w-4 h-4 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin"></div>
+            ) : (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+            )}
+            Export CSV
+          </button>
+          <button
+            onClick={printReport}
+            disabled={printing || filteredOutliers.length === 0}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-sky-400 bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/30 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {printing ? (
+              <div className="w-4 h-4 border-2 border-sky-400 border-t-transparent rounded-full animate-spin"></div>
+            ) : (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+              </svg>
+            )}
+            {printing ? 'Preparing...' : 'Print Report'}
+          </button>
+        </div>
       </div>
 
       {/* Update Message */}
@@ -473,10 +803,40 @@ export function Outliers() {
       </div>
 
       {/* Filters */}
-      <div className="card p-4">
+      <div className="card p-4 space-y-4">
+        {/* Search Bar */}
+        <div className="flex items-center gap-4">
+          <div className="relative flex-1 max-w-md">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search by vendor, invoice number, or ID..."
+              className="w-full pl-10 pr-4 py-2 text-sm bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+            />
+          </div>
+          
+          <div className="flex items-center gap-2 text-sm text-slate-400">
+            Showing <span className="font-semibold text-white">{filteredOutliers.length.toLocaleString()}</span> of {outliers.length.toLocaleString()} outliers
+          </div>
+          
+          {hasActiveFilters && (
+            <button
+              onClick={clearAllFilters}
+              className="px-3 py-1.5 text-sm font-medium text-red-400 hover:text-red-300 transition-colors"
+            >
+              Clear All Filters
+            </button>
+          )}
+        </div>
+
+        {/* Filter Row 1: Type and Status */}
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-2">
-            <span className="text-sm text-slate-400">Filter by Type:</span>
+            <span className="text-sm text-slate-400">Type:</span>
             <div className="flex gap-1">
               {(['all', 'high_value', 'negative'] as const).map(f => (
                 <button
@@ -514,11 +874,128 @@ export function Outliers() {
               ))}
             </div>
           </div>
+        </div>
 
-          <div className="ml-auto text-sm text-slate-400">
-            Showing {filteredOutliers.length.toLocaleString()} of {outliers.length.toLocaleString()} outliers
+        {/* Filter Row 2: Vendor, Process State, Amount, Days */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-3">
+          <div>
+            <label className="block text-xs text-slate-500 mb-1">Vendor</label>
+            <input
+              type="text"
+              value={vendorFilter}
+              onChange={(e) => setVendorFilter(e.target.value)}
+              placeholder="Filter by vendor..."
+              className="w-full px-3 py-1.5 text-sm bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-xs text-slate-500 mb-1">Process State</label>
+            <select
+              value={processStateFilter}
+              onChange={(e) => setProcessStateFilter(e.target.value)}
+              className="w-full px-3 py-1.5 text-sm bg-slate-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-sky-500"
+            >
+              <option value="">All States</option>
+              {uniqueProcessStates.map(state => (
+                <option key={state} value={state}>{state}</option>
+              ))}
+            </select>
+          </div>
+          
+          <div>
+            <label className="block text-xs text-slate-500 mb-1">Min Amount ($)</label>
+            <input
+              type="text"
+              value={minAmountFilter}
+              onChange={(e) => setMinAmountFilter(e.target.value.replace(/[^0-9.,]/g, ''))}
+              placeholder="e.g. 50000"
+              className="w-full px-3 py-1.5 text-sm bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-xs text-slate-500 mb-1">Max Amount ($)</label>
+            <input
+              type="text"
+              value={maxAmountFilter}
+              onChange={(e) => setMaxAmountFilter(e.target.value.replace(/[^0-9.,]/g, ''))}
+              placeholder="e.g. 100000"
+              className="w-full px-3 py-1.5 text-sm bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-xs text-slate-500 mb-1">Min Days Old</label>
+            <input
+              type="number"
+              value={minDaysFilter}
+              onChange={(e) => setMinDaysFilter(e.target.value)}
+              placeholder="e.g. 30"
+              className="w-full px-3 py-1.5 text-sm bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-xs text-slate-500 mb-1">Max Days Old</label>
+            <input
+              type="number"
+              value={maxDaysFilter}
+              onChange={(e) => setMaxDaysFilter(e.target.value)}
+              placeholder="e.g. 90"
+              className="w-full px-3 py-1.5 text-sm bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+            />
           </div>
         </div>
+        
+        {/* Active Filters Summary */}
+        {hasActiveFilters && (
+          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-700/50">
+            <span className="text-xs text-slate-500">Active filters:</span>
+            {filter !== 'all' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-sky-500/20 text-sky-400 rounded-full">
+                Type: {filter === 'high_value' ? 'High Value' : 'Negative'}
+                <button onClick={() => setFilter('all')} className="hover:text-white">×</button>
+              </span>
+            )}
+            {showIncluded !== 'all' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-sky-500/20 text-sky-400 rounded-full">
+                Status: {showIncluded}
+                <button onClick={() => setShowIncluded('all')} className="hover:text-white">×</button>
+              </span>
+            )}
+            {searchTerm && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-sky-500/20 text-sky-400 rounded-full">
+                Search: "{searchTerm}"
+                <button onClick={() => setSearchTerm('')} className="hover:text-white">×</button>
+              </span>
+            )}
+            {vendorFilter && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-sky-500/20 text-sky-400 rounded-full">
+                Vendor: {vendorFilter}
+                <button onClick={() => setVendorFilter('')} className="hover:text-white">×</button>
+              </span>
+            )}
+            {processStateFilter && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-sky-500/20 text-sky-400 rounded-full">
+                State: {processStateFilter}
+                <button onClick={() => setProcessStateFilter('')} className="hover:text-white">×</button>
+              </span>
+            )}
+            {(minAmountFilter || maxAmountFilter) && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-sky-500/20 text-sky-400 rounded-full">
+                Amount: {minAmountFilter || '0'} - {maxAmountFilter || '∞'}
+                <button onClick={() => { setMinAmountFilter(''); setMaxAmountFilter(''); }} className="hover:text-white">×</button>
+              </span>
+            )}
+            {(minDaysFilter || maxDaysFilter) && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-sky-500/20 text-sky-400 rounded-full">
+                Days: {minDaysFilter || '0'} - {maxDaysFilter || '∞'}
+                <button onClick={() => { setMinDaysFilter(''); setMaxDaysFilter(''); }} className="hover:text-white">×</button>
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Outliers Table */}
@@ -547,18 +1024,18 @@ export function Outliers() {
               </thead>
               <tbody className="divide-y divide-slate-700/50">
                 {filteredOutliers.map(invoice => (
-                  <tr key={invoice.id} className={`hover:bg-slate-800/30 ${invoice.include_in_analysis !== true ? 'opacity-60' : ''}`}>
+                  <tr key={invoice.id} className={`hover:bg-slate-800/30 ${invoice.include_in_analysis === false ? 'opacity-60' : ''}`}>
                     <td className="px-4 py-3">
                       <button
                         onClick={() => toggleInclusion(invoice)}
                         disabled={updating === invoice.id}
                         className={`w-10 h-6 rounded-full transition-colors relative ${
-                          invoice.include_in_analysis === true ? 'bg-emerald-500' : 'bg-slate-600'
+                          invoice.include_in_analysis === false ? 'bg-slate-600' : 'bg-emerald-500'
                         } ${updating === invoice.id ? 'opacity-50' : ''}`}
                       >
                         <span
                           className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
-                            invoice.include_in_analysis === true ? 'left-5' : 'left-1'
+                            invoice.include_in_analysis === false ? 'left-1' : 'left-5'
                           }`}
                         />
                         {updating === invoice.id && (
