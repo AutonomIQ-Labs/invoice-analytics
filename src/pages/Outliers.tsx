@@ -429,15 +429,15 @@ export function Outliers() {
       const filterLabel = filter === 'all' ? 'All Types' : filter === 'high_value' ? 'High Value (>$50K)' : 'Negative';
       const statusLabel = showIncluded === 'all' ? 'All' : showIncluded.charAt(0).toUpperCase() + showIncluded.slice(1);
       
-      // Build filter summary for print
+      // Build filter summary for print - escape all user-provided values to prevent XSS
       const activeFiltersList: string[] = [];
-      if (filter !== 'all') activeFiltersList.push(`Type: ${filterLabel}`);
-      if (showIncluded !== 'all') activeFiltersList.push(`Status: ${statusLabel}`);
-      if (searchTerm) activeFiltersList.push(`Search: "${searchTerm}"`);
-      if (vendorFilter) activeFiltersList.push(`Vendor: ${vendorFilter}`);
-      if (processStateFilter) activeFiltersList.push(`Process State: ${processStateFilter}`);
-      if (minAmountFilter || maxAmountFilter) activeFiltersList.push(`Amount: $${minAmountFilter || '0'} - $${maxAmountFilter || '∞'}`);
-      if (minDaysFilter || maxDaysFilter) activeFiltersList.push(`Days Old: ${minDaysFilter || '0'} - ${maxDaysFilter || '∞'}`);
+      if (filter !== 'all') activeFiltersList.push(`Type: ${escapeHtml(filterLabel)}`);
+      if (showIncluded !== 'all') activeFiltersList.push(`Status: ${escapeHtml(statusLabel)}`);
+      if (searchTerm) activeFiltersList.push(`Search: "${escapeHtml(searchTerm)}"`);
+      if (vendorFilter) activeFiltersList.push(`Vendor: ${escapeHtml(vendorFilter)}`);
+      if (processStateFilter) activeFiltersList.push(`Process State: ${escapeHtml(processStateFilter)}`);
+      if (minAmountFilter || maxAmountFilter) activeFiltersList.push(`Amount: $${escapeHtml(minAmountFilter) || '0'} - $${escapeHtml(maxAmountFilter) || '∞'}`);
+      if (minDaysFilter || maxDaysFilter) activeFiltersList.push(`Days Old: ${escapeHtml(minDaysFilter) || '0'} - ${escapeHtml(maxDaysFilter) || '∞'}`);
       const filtersSummary = activeFiltersList.length > 0 ? activeFiltersList.join(' | ') : 'No filters applied';
 
       const printWindow = window.open('', '_blank');
@@ -447,15 +447,15 @@ export function Outliers() {
         return; 
       }
 
-      // Build table rows
+      // Build table rows - escape all database values to prevent XSS
       const rows = dataToprint.map(inv => `
         <tr>
           <td>${inv.include_in_analysis === false ? '<span style="color: #ef4444;">Excluded</span>' : '<span style="color: #10b981;">Included</span>'}</td>
-          <td>${inv.outlier_reason === 'high_value' ? '> $50K' : 'Negative'}</td>
-          <td>${inv.invoice_number || inv.invoice_id || '-'}</td>
-          <td>${inv.supplier || '-'}</td>
+          <td>${inv.outlier_reason === 'high_value' ? '&gt; $50K' : 'Negative'}</td>
+          <td>${escapeHtml(inv.invoice_number || inv.invoice_id) || '-'}</td>
+          <td>${escapeHtml(inv.supplier) || '-'}</td>
           <td style="text-align: right; ${(inv.invoice_amount || 0) < 0 ? 'color: #8b5cf6;' : 'color: #ef4444;'}">${formatCurrency(inv.invoice_amount)}</td>
-          <td>${inv.overall_process_state || '-'}</td>
+          <td>${escapeHtml(inv.overall_process_state) || '-'}</td>
           <td>${inv.days_old ?? '-'}</td>
         </tr>
       `).join('');
