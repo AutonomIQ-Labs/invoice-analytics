@@ -112,7 +112,8 @@ function mapRowToInvoice(row: CsvRow, batchId: string, headers: string[]): MapRo
   }
 
   // Get overall process state (index 21 based on CSV structure)
-  const overallProcessState = values[21] || '';
+  // Trim whitespace for consistent comparison (CSV data often has leading/trailing spaces)
+  const overallProcessState = (values[21] || '').trim();
   
   // Skip fully paid invoices based on Overall Process State (not payment status)
   if (isFullyPaidState(overallProcessState)) {
