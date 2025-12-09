@@ -31,7 +31,7 @@ export function Outliers() {
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const [filter, setFilter] = useState<'all' | 'high_value' | 'negative'>('all');
   const [showIncluded, setShowIncluded] = useState<'all' | 'included' | 'excluded'>('all');
-  const [minAmountInput, setMinAmountInput] = useState('50000');
+  const [minAmountInput, setMinAmountInput] = useState('100000');
   const [maxAmountInput, setMaxAmountInput] = useState('');
   
   // Additional filters for export/print
@@ -371,7 +371,7 @@ export function Outliers() {
         invoice.supplier || '',
         invoice.invoice_amount?.toString() || '0',
         invoice.days_old?.toString() || '0',
-        invoice.outlier_reason === 'high_value' ? 'High Value (>$50K)' : 'Negative',
+        invoice.outlier_reason === 'high_value' ? 'High Value (>$100K)' : 'Negative',
         invoice.include_in_analysis === false ? 'No' : 'Yes',
         invoice.invoice_date || '',
         invoice.overall_process_state || '',
@@ -426,7 +426,7 @@ export function Outliers() {
         return;
       }
 
-      const filterLabel = filter === 'all' ? 'All Types' : filter === 'high_value' ? 'High Value (>$50K)' : 'Negative';
+      const filterLabel = filter === 'all' ? 'All Types' : filter === 'high_value' ? 'High Value (>$100K)' : 'Negative';
       const statusLabel = showIncluded === 'all' ? 'All' : showIncluded.charAt(0).toUpperCase() + showIncluded.slice(1);
       
       // Build filter summary for print - escape all user-provided values to prevent XSS
@@ -451,7 +451,7 @@ export function Outliers() {
       const rows = dataToprint.map(inv => `
         <tr>
           <td>${inv.include_in_analysis === false ? '<span style="color: #ef4444;">Excluded</span>' : '<span style="color: #10b981;">Included</span>'}</td>
-          <td>${inv.outlier_reason === 'high_value' ? '&gt; $50K' : 'Negative'}</td>
+          <td>${inv.outlier_reason === 'high_value' ? '&gt; $100K' : 'Negative'}</td>
           <td>${escapeHtml(inv.invoice_number || inv.invoice_id) || '-'}</td>
           <td>${escapeHtml(inv.supplier) || '-'}</td>
           <td style="text-align: right; ${(inv.invoice_amount || 0) < 0 ? 'color: #8b5cf6;' : 'color: #ef4444;'}">${formatCurrency(inv.invoice_amount)}</td>
@@ -572,7 +572,7 @@ export function Outliers() {
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white">Outlier Management</h1>
-          <p className="text-slate-400 mt-1">Review and manage invoices flagged as outliers (&gt;$50K or negative amounts)</p>
+          <p className="text-slate-400 mt-1">Review and manage invoices flagged as outliers (&gt;$100K in "01 - Header To Be Verified" or negative amounts)</p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -654,7 +654,7 @@ export function Outliers() {
               </div>
               <div>
                 <p className="text-2xl font-bold text-white">{stats.highValueCount.toLocaleString()}</p>
-                <p className="text-xs text-slate-400">High Value (&gt;$50K)</p>
+                <p className="text-xs text-slate-400">High Value (&gt;$100K)</p>
               </div>
             </div>
           </div>
@@ -1051,7 +1051,7 @@ export function Outliers() {
                           ? 'bg-red-500/20 text-red-400'
                           : 'bg-purple-500/20 text-purple-400'
                       }`}>
-                        {invoice.outlier_reason === 'high_value' ? '> $50K' : 'Negative'}
+                        {invoice.outlier_reason === 'high_value' ? '> $100K' : 'Negative'}
                       </span>
                     </td>
                     <td className="px-4 py-3">
@@ -1092,7 +1092,7 @@ export function Outliers() {
           <div>
             <p className="text-sm text-sky-400 font-medium">About Outliers</p>
             <p className="text-sm text-slate-400 mt-1">
-              Invoices are flagged as outliers if they exceed $50,000 or have negative amounts. 
+              Invoices are flagged as outliers if they exceed $100,000 AND are in the "01 - Header To Be Verified" process state, or have negative amounts. 
               By default, outliers are excluded from dashboard analytics to prevent skewing the data. 
               Toggle individual invoices or use bulk actions to include them in your analysis.
             </p>

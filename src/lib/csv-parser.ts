@@ -1,8 +1,9 @@
 import Papa from 'papaparse';
 import type { Invoice } from '../types/database';
 
-// Outlier threshold - invoices above this are flagged as outliers
-const OUTLIER_THRESHOLD = 50_000; // $50,000
+// Outlier threshold - invoices above this AND in specific process state are flagged as outliers
+const OUTLIER_THRESHOLD = 100_000; // $100,000
+const OUTLIER_PROCESS_STATE = '01 - Header To Be Verified';
 
 export interface ParseResult {
   invoices: Omit<Invoice, 'id' | 'imported_at'>[];
@@ -122,7 +123,8 @@ function mapRowToInvoice(row: CsvRow, batchId: string, headers: string[]): MapRo
   let isOutlier = false;
   let outlierReason: 'high_value' | 'negative' | null = null;
   
-  if (amount > OUTLIER_THRESHOLD) {
+  // High value outlier: amount > $100K AND process state is "01 - Header To Be Verified"
+  if (amount > OUTLIER_THRESHOLD && overallProcessState === OUTLIER_PROCESS_STATE) {
     isOutlier = true;
     outlierReason = 'high_value';
   } else if (amount < 0) {
