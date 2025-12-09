@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { CsvUploader } from '../components/import/CsvUploader';
+import { LastImportSummary } from '../components/import/LastImportSummary';
 import { useImportBatches } from '../hooks/useInvoices';
 import type { ImportBatch } from '../types/database';
 
@@ -50,8 +51,10 @@ export function Import() {
         <p className="text-slate-400 mt-1">Upload CSV files to import invoice data</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <CsvUploader onImportComplete={refetch} />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <CsvUploader onImportComplete={() => { refetch(); window.dispatchEvent(new Event('importComplete')); }} />
+
+        <LastImportSummary />
 
         <div className="card p-6">
           <h3 className="text-lg font-semibold text-white mb-4">Import Instructions</h3>

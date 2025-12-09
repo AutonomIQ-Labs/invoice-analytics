@@ -94,7 +94,15 @@ export function CsvUploader({ onImportComplete }: CsvUploaderProps) {
       }
 
       setProgress({ status: 'uploading', message: 'Finalizing import...', progress: 95 });
-      await supabase.from('import_batches').update({ record_count: invoices.length, skipped_count: skippedCount }).eq('id', batch.id);
+      await supabase.from('import_batches').update({ 
+        record_count: invoices.length, 
+        skipped_count: skippedCount,
+        skipped_zero_value: skippedZeroValue,
+        skipped_fully_paid: skippedFullyPaid,
+        outlier_count: outlierCount,
+        outlier_high_value: outlierHighValue,
+        outlier_negative: outlierNegative
+      }).eq('id', batch.id);
 
       setProgress({ 
         status: 'complete', 
@@ -210,7 +218,7 @@ export function CsvUploader({ onImportComplete }: CsvUploaderProps) {
                 </div>
                 <div className="text-center">
                   <p className="text-xl font-bold text-red-400">{progress.result.outlierHighValue.toLocaleString()}</p>
-                  <p className="text-xs text-slate-400">&gt;$50K</p>
+                  <p className="text-xs text-slate-400">High Value</p>
                 </div>
                 <div className="text-center">
                   <p className="text-xl font-bold text-purple-400">{progress.result.outlierNegative.toLocaleString()}</p>

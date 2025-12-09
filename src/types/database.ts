@@ -40,6 +40,12 @@ export interface ImportBatch {
   imported_by: string | null;
   is_current: boolean;
   is_deleted?: boolean;
+  // Detailed import statistics
+  skipped_zero_value?: number;
+  skipped_fully_paid?: number;
+  outlier_count?: number;
+  outlier_high_value?: number;
+  outlier_negative?: number;
 }
 
 export interface OutlierSettings {
