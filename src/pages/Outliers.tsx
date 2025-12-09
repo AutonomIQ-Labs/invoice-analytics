@@ -371,7 +371,7 @@ export function Outliers() {
         invoice.supplier || '',
         invoice.invoice_amount?.toString() || '0',
         invoice.days_old?.toString() || '0',
-        invoice.outlier_reason === 'high_value' ? 'High Value (>$100K)' : 'Negative',
+        invoice.outlier_reason === 'high_value' ? 'High Value' : 'Negative',
         invoice.include_in_analysis === false ? 'No' : 'Yes',
         invoice.invoice_date || '',
         invoice.overall_process_state || '',
@@ -426,7 +426,7 @@ export function Outliers() {
         return;
       }
 
-      const filterLabel = filter === 'all' ? 'All Types' : filter === 'high_value' ? 'High Value (>$100K)' : 'Negative';
+      const filterLabel = filter === 'all' ? 'All Types' : filter === 'high_value' ? 'High Value' : 'Negative';
       const statusLabel = showIncluded === 'all' ? 'All' : showIncluded.charAt(0).toUpperCase() + showIncluded.slice(1);
       
       // Build filter summary for print - escape all user-provided values to prevent XSS
@@ -451,7 +451,7 @@ export function Outliers() {
       const rows = dataToprint.map(inv => `
         <tr>
           <td>${inv.include_in_analysis === false ? '<span style="color: #ef4444;">Excluded</span>' : '<span style="color: #10b981;">Included</span>'}</td>
-          <td>${inv.outlier_reason === 'high_value' ? '&gt; $100K' : 'Negative'}</td>
+          <td>${inv.outlier_reason === 'high_value' ? 'High Value' : 'Negative'}</td>
           <td>${escapeHtml(inv.invoice_number || inv.invoice_id) || '-'}</td>
           <td>${escapeHtml(inv.supplier) || '-'}</td>
           <td style="text-align: right; ${(inv.invoice_amount || 0) < 0 ? 'color: #8b5cf6;' : 'color: #ef4444;'}">${formatCurrency(inv.invoice_amount)}</td>
@@ -654,7 +654,7 @@ export function Outliers() {
               </div>
               <div>
                 <p className="text-2xl font-bold text-white">{stats.highValueCount.toLocaleString()}</p>
-                <p className="text-xs text-slate-400">High Value (&gt;$100K)</p>
+                <p className="text-xs text-slate-400">High Value</p>
               </div>
             </div>
           </div>
@@ -1051,7 +1051,7 @@ export function Outliers() {
                           ? 'bg-red-500/20 text-red-400'
                           : 'bg-purple-500/20 text-purple-400'
                       }`}>
-                        {invoice.outlier_reason === 'high_value' ? '> $100K' : 'Negative'}
+                        {invoice.outlier_reason === 'high_value' ? 'High Value' : 'Negative'}
                       </span>
                     </td>
                     <td className="px-4 py-3">
