@@ -84,7 +84,7 @@ export function LastImportSummary() {
     );
   }
 
-  const hasDetailedStats = (batch.skipped_zero_value ?? 0) > 0 || (batch.skipped_fully_paid ?? 0) > 0 || (batch.outlier_count ?? 0) > 0;
+  const hasDetailedStats = (batch.skipped_fully_paid ?? 0) > 0 || (batch.outlier_count ?? 0) > 0;
   const outlierCount = batch.outlier_count ?? 0;
 
   return (
@@ -103,21 +103,16 @@ export function LastImportSummary() {
       </div>
 
       {/* Main Stats Grid - matches CsvUploader layout */}
-      <div className="grid grid-cols-3 gap-3 mb-4">
+      <div className="grid grid-cols-2 gap-3 mb-4">
         {/* Imported */}
         <div className="bg-slate-800/50 rounded-lg p-4 text-center">
           <p className="text-2xl font-bold text-emerald-400">{batch.record_count.toLocaleString()}</p>
           <p className="text-xs text-slate-400">Imported</p>
         </div>
-        {/* Zero Value */}
-        <div className="bg-slate-800/50 rounded-lg p-4 text-center">
-          <p className="text-2xl font-bold text-amber-400">{(batch.skipped_zero_value ?? 0).toLocaleString()}</p>
-          <p className="text-xs text-slate-400">Zero Value</p>
-        </div>
         {/* Fully Paid */}
         <div className="bg-slate-800/50 rounded-lg p-4 text-center">
           <p className="text-2xl font-bold text-blue-400">{(batch.skipped_fully_paid ?? 0).toLocaleString()}</p>
-          <p className="text-xs text-slate-400">Fully Paid</p>
+          <p className="text-xs text-slate-400">Skipped (Fully Paid)</p>
         </div>
       </div>
 
