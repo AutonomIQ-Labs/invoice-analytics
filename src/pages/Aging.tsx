@@ -8,7 +8,23 @@ import { Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, P
 const formatCurrency = (value: number) => new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD', notation: 'compact', maximumFractionDigits: 1 }).format(value);
 const formatFullCurrency = (value: number) => new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD', minimumFractionDigits: 2 }).format(value);
 
-const COLORS = ['#34d399', '#10b981', '#059669', '#22d3ee', '#38bdf8', '#60a5fa', '#818cf8', '#a78bfa', '#c084fc', '#e879f9', '#f472b6', '#fb7185', '#ef4444'];
+// Colors with high visual distinction between adjacent buckets
+// Progresses from green -> cyan -> blue -> purple -> pink -> red as aging increases
+const COLORS = [
+  '#22c55e', // 0-30: bright green
+  '#06b6d4', // 30-60: cyan (distinctly different from green)
+  '#3b82f6', // 60-90: blue (distinctly different from cyan)
+  '#8b5cf6', // 90-120: violet
+  '#a855f7', // 120-150: purple
+  '#d946ef', // 150-180: fuchsia
+  '#ec4899', // 180-210: pink
+  '#f43f5e', // 210-240: rose
+  '#ef4444', // 240-270: red
+  '#f97316', // 270-300: orange
+  '#eab308', // 300-330: yellow
+  '#84cc16', // 330-360: lime
+  '#dc2626', // 360+: dark red
+];
 
 interface AgingBucketData {
   bucket: string;
@@ -343,7 +359,17 @@ export function Aging() {
                       {bucketData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.color} />))}
                     </Pie>
                     <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }} formatter={(value: number) => [value.toLocaleString(), 'Invoices']} />
-                    <Legend layout="vertical" align="right" verticalAlign="middle" formatter={(value) => <span className="text-slate-300 text-xs">{value}</span>} />
+                    <Legend 
+                      layout="vertical" 
+                      align="right" 
+                      verticalAlign="middle" 
+                      payload={bucketData.map((entry) => ({
+                        value: entry.bucket,
+                        type: 'circle' as const,
+                        color: entry.color,
+                      }))}
+                      formatter={(value) => <span className="text-slate-300 text-xs">{value}</span>} 
+                    />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
@@ -358,7 +384,17 @@ export function Aging() {
                       {bucketData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.color} />))}
                     </Pie>
                     <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }} formatter={(value: number) => [formatFullCurrency(value), 'Value']} />
-                    <Legend layout="vertical" align="right" verticalAlign="middle" formatter={(value) => <span className="text-slate-300 text-xs">{value}</span>} />
+                    <Legend 
+                      layout="vertical" 
+                      align="right" 
+                      verticalAlign="middle" 
+                      payload={bucketData.map((entry) => ({
+                        value: entry.bucket,
+                        type: 'circle' as const,
+                        color: entry.color,
+                      }))}
+                      formatter={(value) => <span className="text-slate-300 text-xs">{value}</span>} 
+                    />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
