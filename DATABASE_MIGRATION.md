@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS invoices (
   payment_terms TEXT,
   payment_amount NUMERIC(15,2),
   payment_date DATE,
-  enter_to_payment INTEGER,
+  enter_to_payment NUMERIC(15,2),
   -- PO & Routing
   po_type TEXT,
   identifying_po TEXT,
@@ -97,7 +97,7 @@ ALTER TABLE invoices ADD COLUMN IF NOT EXISTS approval_response TEXT;
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS action_date DATE;
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS payment_amount NUMERIC(15,2);
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS payment_date DATE;
-ALTER TABLE invoices ADD COLUMN IF NOT EXISTS enter_to_payment INTEGER;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS enter_to_payment NUMERIC(15,2);
 
 -- Add new indexes for better query performance
 CREATE INDEX IF NOT EXISTS idx_invoices_process_state ON invoices(overall_process_state);
