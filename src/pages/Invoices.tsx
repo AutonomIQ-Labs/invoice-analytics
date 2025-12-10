@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
@@ -277,15 +278,17 @@ export function Invoices() {
       const exportData = await fetchAllInvoices();
       if (exportData.length === 0) { alert('No data to export'); return; }
 
-      const headers = ['Invoice Number', 'Invoice ID', 'Invoice Date', 'Creation Date', 'Vendor', 'Supplier Type', 'Amount', 'Days Old', 'Aging', 'Approval Status', 'Validation Status', 'Payment Status', 'Payment Method', 'Payment Terms', 'Process State', 'Custom Status', 'PO Type', 'PO Number', 'Business Unit', 'Account Coding', 'Routing Attribute'];
+      const headers = ['Invoice Number', 'Invoice ID', 'Invoice Date', 'Creation Date', 'Vendor', 'Supplier Type', 'Amount', 'Days Old', 'Aging', 'Approval Status', 'Validation Status', 'Payment Status', 'Payment Method', 'Payment Terms', 'Process State', 'Invoice Status', 'Custom Status', 'PO Type', 'PO Number', 'Business Unit', 'Account Coding', 'Routing Attribute', 'Coded By', 'Approver ID', 'WF Approval Status', 'Approval Response', 'Action Date', 'Payment Amount', 'Payment Date', 'Enter to Payment'];
 
       const rows = exportData.map(inv => [
         inv.invoice_number || '', inv.invoice_id || '', inv.invoice_date || '', inv.creation_date || '',
         inv.supplier || '', inv.supplier_type || '', inv.invoice_amount || 0, inv.days_old || 0,
         inv.aging_bucket || '', inv.approval_status || '', inv.validation_status || '',
         inv.payment_status || '', inv.payment_method || '', inv.payment_terms || '',
-        inv.overall_process_state || '', inv.custom_invoice_status || '', inv.po_type || '',
-        inv.identifying_po || '', inv.business_unit || '', inv.account_coding_status || '', inv.routing_attribute || ''
+        inv.overall_process_state || '', inv.invoice_status || '', inv.custom_invoice_status || '', inv.po_type || '',
+        inv.identifying_po || '', inv.business_unit || '', inv.account_coding_status || '', inv.routing_attribute || '',
+        inv.coded_by || '', inv.approver_id || '', inv.wfapproval_status || '', inv.approval_response || '',
+        inv.action_date || '', inv.payment_amount || '', inv.payment_date || '', inv.enter_to_payment || ''
       ]);
 
       const csvContent = [headers.join(','), ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))].join('\n');
@@ -335,7 +338,7 @@ export function Invoices() {
 
       const activeFiltersText = Object.entries(filters).filter(([_, v]) => v !== '').map(([k, v]) => `${k}: ${v}`).join(', ') || 'None';
 
-      printWindow.document.write(`<!DOCTYPE html><html><head><title>Invoice Report - ${new Date().toLocaleDateString('en-CA')}</title><style>* { margin: 0; padding: 0; box-sizing: border-box; } body { font-family: Arial, sans-serif; padding: 20px; color: #333; font-size: 11px; } .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #0ea5e9; padding-bottom: 15px; } .header h1 { color: #0ea5e9; font-size: 24px; margin-bottom: 5px; } .header p { color: #666; } .summary { display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; } .summary-card { flex: 1; min-width: 150px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; text-align: center; } .summary-card .value { font-size: 20px; font-weight: bold; color: #0ea5e9; } .summary-card .label { font-size: 10px; color: #64748b; margin-top: 3px; } .section { margin-bottom: 20px; } .section h3 { color: #334155; font-size: 14px; margin-bottom: 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; } .breakdown { display: flex; gap: 20px; flex-wrap: wrap; } .breakdown-group { flex: 1; min-width: 200px; } .breakdown-item { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #f1f5f9; } .breakdown-item .name { color: #475569; } .breakdown-item .stats { color: #64748b; } table { width: 100%; border-collapse: collapse; font-size: 9px; } th { background: #0ea5e9; color: white; padding: 8px 4px; text-align: left; font-weight: 600; } td { padding: 6px 4px; border-bottom: 1px solid #e2e8f0; } tr:nth-child(even) { background: #f8fafc; } .amount { text-align: right; font-family: monospace; } .filters { background: #fef3c7; border: 1px solid #fcd34d; border-radius: 6px; padding: 10px; margin-bottom: 15px; font-size: 10px; } .filters strong { color: #92400e; } .footer { margin-top: 20px; text-align: center; color: #94a3b8; font-size: 10px; border-top: 1px solid #e2e8f0; padding-top: 10px; } @media print { body { padding: 10px; } .no-print { display: none; } }</style></head><body><div class="header"><h1>SKG Payables Invoice Report</h1><p>Saskatchewan Health Authority - Generated ${new Date().toLocaleString('en-CA')}</p></div>${activeFilterCount > 0 ? `<div class="filters"><strong>Active Filters:</strong> ${activeFiltersText}</div>` : ''}<div class="summary"><div class="summary-card"><div class="value">${exportData.length.toLocaleString()}</div><div class="label">Total Invoices</div></div><div class="summary-card"><div class="value">${formatCurrency(totalValue)}</div><div class="label">Total Value</div></div><div class="summary-card"><div class="value">${Math.round(avgDaysOld)}</div><div class="label">Avg Days Old</div></div></div><div class="section"><h3>Breakdown Summary</h3><div class="breakdown"><div class="breakdown-group"><strong style="font-size: 11px; color: #334155;">By Process State</strong>${Object.entries(stateGroups).sort((a, b) => b[1].value - a[1].value).slice(0, 8).map(([state, data]) => `<div class="breakdown-item"><span class="name">${state}</span><span class="stats">${data.count} inv · ${formatCurrency(data.value)}</span></div>`).join('')}</div><div class="breakdown-group"><strong style="font-size: 11px; color: #334155;">By PO Type</strong>${Object.entries(poGroups).sort((a, b) => b[1].value - a[1].value).map(([type, data]) => `<div class="breakdown-item"><span class="name">${type}</span><span class="stats">${data.count} inv · ${formatCurrency(data.value)}</span></div>`).join('')}</div></div></div><div class="section"><h3>Invoice Details (${exportData.length} records)</h3><table><thead><tr><th>Invoice #</th><th>Vendor</th><th>Amount</th><th>Days</th><th>Process State</th><th>Approval</th><th>Payment</th><th>PO Type</th></tr></thead><tbody>${exportData.slice(0, 500).map(inv => `<tr><td>${inv.invoice_number || '-'}</td><td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${inv.supplier || '-'}</td><td class="amount">${formatCurrency(inv.invoice_amount || 0)}</td><td>${inv.days_old || '-'}</td><td style="max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${inv.overall_process_state?.replace(/^\d+\s*-\s*/, '') || '-'}</td><td>${inv.approval_status || '-'}</td><td>${inv.payment_status || '-'}</td><td>${inv.po_type || '-'}</td></tr>`).join('')}${exportData.length > 500 ? `<tr><td colspan="8" style="text-align: center; color: #94a3b8; font-style: italic;">... and ${exportData.length - 500} more records (showing first 500)</td></tr>` : ''}</tbody></table></div><div class="footer"><p>Report generated from SKG Invoice Analytics Dashboard</p><p>Total records: ${exportData.length} | Total value: ${formatCurrency(totalValue)}</p></div><script>window.onload = function() { window.print(); }</script></body></html>`);
+      printWindow.document.write(`<!DOCTYPE html><html><head><title>Invoice Report - ${new Date().toLocaleDateString('en-CA')}</title><style>* { margin: 0; padding: 0; box-sizing: border-box; } body { font-family: Arial, sans-serif; padding: 20px; color: #333; font-size: 11px; } .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #0ea5e9; padding-bottom: 15px; } .header h1 { color: #0ea5e9; font-size: 24px; margin-bottom: 5px; } .header p { color: #666; } .summary { display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; } .summary-card { flex: 1; min-width: 150px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; text-align: center; } .summary-card .value { font-size: 20px; font-weight: bold; color: #0ea5e9; } .summary-card .label { font-size: 10px; color: #64748b; margin-top: 3px; } .section { margin-bottom: 20px; } .section h3 { color: #334155; font-size: 14px; margin-bottom: 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; } .breakdown { display: flex; gap: 20px; flex-wrap: wrap; } .breakdown-group { flex: 1; min-width: 200px; } .breakdown-item { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #f1f5f9; } .breakdown-item .name { color: #475569; } .breakdown-item .stats { color: #64748b; } table { width: 100%; border-collapse: collapse; font-size: 9px; } th { background: #0ea5e9; color: white; padding: 8px 4px; text-align: left; font-weight: 600; } td { padding: 6px 4px; border-bottom: 1px solid #e2e8f0; } tr:nth-child(even) { background: #f8fafc; } .amount { text-align: right; font-family: monospace; } .filters { background: #fef3c7; border: 1px solid #fcd34d; border-radius: 6px; padding: 10px; margin-bottom: 15px; font-size: 10px; } .filters strong { color: #92400e; } .footer { margin-top: 20px; text-align: center; color: #94a3b8; font-size: 10px; border-top: 1px solid #e2e8f0; padding-top: 10px; } @media print { body { padding: 10px; } .no-print { display: none; } }</style></head><body><div class="header"><h1>SKG Payables Invoice Report</h1><p>Saskatchewan Health Authority - Generated ${new Date().toLocaleString('en-CA')}</p></div>${activeFilterCount > 0 ? `<div class="filters"><strong>Active Filters:</strong> ${activeFiltersText}</div>` : ''}<div class="summary"><div class="summary-card"><div class="value">${exportData.length.toLocaleString()}</div><div class="label">Total Invoices</div></div><div class="summary-card"><div class="value">${formatCurrency(totalValue)}</div><div class="label">Total Value</div></div><div class="summary-card"><div class="value">${Math.round(avgDaysOld)}</div><div class="label">Avg Days Old</div></div></div><div class="section"><h3>Breakdown Summary</h3><div class="breakdown"><div class="breakdown-group"><strong style="font-size: 11px; color: #334155;">By Process State</strong>${Object.entries(stateGroups).sort((a, b) => b[1].value - a[1].value).slice(0, 8).map(([state, data]) => `<div class="breakdown-item"><span class="name">${state}</span><span class="stats">${data.count} inv · ${formatCurrency(data.value)}</span></div>`).join('')}</div><div class="breakdown-group"><strong style="font-size: 11px; color: #334155;">By PO Type</strong>${Object.entries(poGroups).sort((a, b) => b[1].value - a[1].value).map(([type, data]) => `<div class="breakdown-item"><span class="name">${type}</span><span class="stats">${data.count} inv · ${formatCurrency(data.value)}</span></div>`).join('')}</div></div></div><div class="section"><h3>Invoice Details (${exportData.length} records)</h3><table><thead><tr><th>Invoice #</th><th>Vendor</th><th>Amount</th><th>Days</th><th>Process State</th><th>Approval</th><th>Approver</th><th>Payment</th><th>PO Type</th></tr></thead><tbody>${exportData.slice(0, 500).map(inv => `<tr><td>${inv.invoice_number || '-'}</td><td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${inv.supplier || '-'}</td><td class="amount">${formatCurrency(inv.invoice_amount || 0)}</td><td>${inv.days_old || '-'}</td><td style="max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${inv.overall_process_state?.replace(/^\d+\s*-\s*/, '') || '-'}</td><td>${inv.approval_status || '-'}</td><td>${inv.approver_id || '-'}</td><td>${inv.payment_status || '-'}</td><td>${inv.po_type || '-'}</td></tr>`).join('')}${exportData.length > 500 ? `<tr><td colspan="9" style="text-align: center; color: #94a3b8; font-style: italic;">... and ${exportData.length - 500} more records (showing first 500)</td></tr>` : ''}</tbody></table></div><div class="footer"><p>Report generated from SKG Invoice Analytics Dashboard</p><p>Total records: ${exportData.length} | Total value: ${formatCurrency(totalValue)}</p></div><script>window.onload = function() { window.print(); }</script></body></html>`);
       printWindow.document.close();
     } catch (error) {
       console.error('Print failed:', error);
@@ -462,24 +465,50 @@ export function Invoices() {
                 <div className="bg-slate-800/50 rounded-lg p-4 text-center"><p className={`text-2xl font-bold ${(selectedInvoice.days_old || 0) > 90 ? 'text-amber-400' : 'text-emerald-400'}`}>{selectedInvoice.days_old}</p><p className="text-sm text-slate-400">Days Old</p></div>
                 <div className="bg-slate-800/50 rounded-lg p-4 text-center"><p className="text-lg font-bold text-sky-400">{selectedInvoice.overall_process_state?.replace(/^\d+\s*-\s*/, '') || '-'}</p><p className="text-sm text-slate-400">Process State</p></div>
               </div>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              {/* Basic Information */}
+              <h3 className="text-sm font-semibold text-slate-300 mb-3">Basic Information</h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
                 <DetailField label="Vendor" value={selectedInvoice.supplier} />
                 <DetailField label="Supplier Type" value={selectedInvoice.supplier_type} />
                 <DetailField label="Invoice ID" value={selectedInvoice.invoice_id} />
                 <DetailField label="Invoice Date" value={formatDate(selectedInvoice.invoice_date)} />
                 <DetailField label="Creation Date" value={formatDate(selectedInvoice.creation_date)} />
                 <DetailField label="Aging Bucket" value={selectedInvoice.aging_bucket} />
+                <DetailField label="Invoice Type" value={selectedInvoice.invoice_type} />
+                <DetailField label="Invoice Status" value={selectedInvoice.invoice_status} />
+                <DetailField label="Business Unit" value={selectedInvoice.business_unit} />
+              </div>
+
+              {/* Status & Approval */}
+              <h3 className="text-sm font-semibold text-slate-300 mb-3">Status & Approval</h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
                 <DetailField label="Approval Status" value={selectedInvoice.approval_status} />
                 <DetailField label="Validation Status" value={selectedInvoice.validation_status} />
+                <DetailField label="Account Coding" value={selectedInvoice.account_coding_status} />
+                <DetailField label="Coded By" value={selectedInvoice.coded_by} />
+                <DetailField label="Approver ID" value={selectedInvoice.approver_id} />
+                <DetailField label="WF Approval Status" value={selectedInvoice.wfapproval_status} />
+                <DetailField label="WF Status Code" value={selectedInvoice.wfapproval_status_code} />
+                <DetailField label="Approval Response" value={selectedInvoice.approval_response} />
+                <DetailField label="Action Date" value={formatDate(selectedInvoice.action_date)} />
+              </div>
+
+              {/* Payment Information */}
+              <h3 className="text-sm font-semibold text-slate-300 mb-3">Payment Information</h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
                 <DetailField label="Payment Status" value={selectedInvoice.payment_status} />
                 <DetailField label="Payment Method" value={selectedInvoice.payment_method} />
                 <DetailField label="Payment Terms" value={selectedInvoice.payment_terms} />
-                <DetailField label="Account Coding" value={selectedInvoice.account_coding_status} />
-                <DetailField label="Custom Status" value={selectedInvoice.custom_invoice_status} />
-                <DetailField label="Invoice Type" value={selectedInvoice.invoice_type} />
+                <DetailField label="Payment Amount" value={selectedInvoice.payment_amount ? formatCurrency(selectedInvoice.payment_amount) : null} />
+                <DetailField label="Payment Date" value={formatDate(selectedInvoice.payment_date)} />
+                <DetailField label="Enter to Payment" value={selectedInvoice.enter_to_payment?.toString()} />
+              </div>
+
+              {/* PO & Routing */}
+              <h3 className="text-sm font-semibold text-slate-300 mb-3">PO & Routing</h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <DetailField label="PO Type" value={selectedInvoice.po_type} />
                 <DetailField label="PO Number" value={selectedInvoice.identifying_po} />
-                <DetailField label="Business Unit" value={selectedInvoice.business_unit} />
                 <DetailField label="Routing Attribute" value={selectedInvoice.routing_attribute} />
               </div>
             </div>

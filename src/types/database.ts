@@ -25,6 +25,17 @@ export interface Invoice {
   identifying_po: string | null;
   import_batch_id: string | null;
   imported_at: string;
+  // New fields from AP Invoice Aging Report
+  coded_by: string | null;
+  wfapproval_status_code: string | null;
+  wfapproval_status: string | null;
+  invoice_status: string | null;
+  approver_id: string | null;
+  approval_response: string | null;
+  action_date: string | null;
+  payment_amount: number | null;
+  payment_date: string | null;
+  enter_to_payment: number | null;
   // Outlier tracking fields
   is_outlier?: boolean;
   outlier_reason?: 'high_value' | 'negative' | null;
@@ -41,7 +52,6 @@ export interface ImportBatch {
   is_current: boolean;
   is_deleted?: boolean;
   // Detailed import statistics
-  skipped_zero_value?: number;
   skipped_fully_paid?: number;
   outlier_count?: number;
   outlier_high_value?: number;

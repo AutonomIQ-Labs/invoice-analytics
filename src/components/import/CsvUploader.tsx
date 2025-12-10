@@ -15,7 +15,6 @@ interface ImportProgress {
   result?: { 
     imported: number; 
     skipped: number; 
-    skippedZeroValue: number;
     skippedFullyPaid: number;
     outlierCount: number;
     outlierHighValue: number;
@@ -67,7 +66,6 @@ export function CsvUploader({ onImportComplete }: CsvUploaderProps) {
       const { 
         invoices, 
         skippedCount, 
-        skippedZeroValue, 
         skippedFullyPaid,
         outlierCount,
         outlierHighValue,
@@ -76,7 +74,7 @@ export function CsvUploader({ onImportComplete }: CsvUploaderProps) {
       } = await parseCsvFile(file, batch.id);
 
       if (invoices.length === 0) {
-        throw new Error('No valid invoices found. Zero-value and fully paid (process state 09) invoices are filtered out.');
+        throw new Error('No valid invoices found. Fully paid (process state 09) invoices are filtered out.');
       }
 
       setProgress({ status: 'uploading', message: `Uploading ${invoices.length.toLocaleString()} invoices...`, progress: 40 });
@@ -97,7 +95,6 @@ export function CsvUploader({ onImportComplete }: CsvUploaderProps) {
       await supabase.from('import_batches').update({ 
         record_count: invoices.length, 
         skipped_count: skippedCount,
-        skipped_zero_value: skippedZeroValue,
         skipped_fully_paid: skippedFullyPaid,
         outlier_count: outlierCount,
         outlier_high_value: outlierHighValue,
@@ -111,7 +108,6 @@ export function CsvUploader({ onImportComplete }: CsvUploaderProps) {
         result: { 
           imported: invoices.length, 
           skipped: skippedCount, 
-          skippedZeroValue, 
           skippedFullyPaid,
           outlierCount,
           outlierHighValue,
@@ -157,7 +153,7 @@ export function CsvUploader({ onImportComplete }: CsvUploaderProps) {
             Browse Files
             <input type="file" accept=".csv,.txt" onChange={handleFileInput} className="hidden" />
           </label>
-          <p className="text-slate-500 text-xs mt-4">Zero-value invoices and "09 - Fully Paid" invoices are filtered out</p>
+          <p className="text-slate-500 text-xs mt-4">"09 - Fully Paid" invoices are filtered out</p>
         </div>
       )}
 
@@ -187,18 +183,14 @@ export function CsvUploader({ onImportComplete }: CsvUploaderProps) {
           <p className="text-center text-white text-lg mb-6">Import Complete!</p>
           
           {/* Main Stats */}
-          <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="grid grid-cols-2 gap-3 mb-4">
             <div className="bg-slate-800/50 rounded-lg p-4 text-center">
               <p className="text-2xl font-bold text-emerald-400">{progress.result.imported.toLocaleString()}</p>
               <p className="text-xs text-slate-400">Imported</p>
             </div>
             <div className="bg-slate-800/50 rounded-lg p-4 text-center">
-              <p className="text-2xl font-bold text-amber-400">{progress.result.skippedZeroValue.toLocaleString()}</p>
-              <p className="text-xs text-slate-400">Zero Value</p>
-            </div>
-            <div className="bg-slate-800/50 rounded-lg p-4 text-center">
               <p className="text-2xl font-bold text-blue-400">{progress.result.skippedFullyPaid.toLocaleString()}</p>
-              <p className="text-xs text-slate-400">Fully Paid</p>
+              <p className="text-xs text-slate-400">Skipped (Fully Paid)</p>
             </div>
           </div>
 
