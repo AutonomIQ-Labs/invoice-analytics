@@ -74,6 +74,24 @@ function isFullyPaidState(processState: string): boolean {
   return state.startsWith('09') || state.toLowerCase().includes('fully paid');
 }
 
+// Calculate days old from invoice date vs current date
+function calculateDaysOld(invoiceDateStr: string | null): number | null {
+  if (!invoiceDateStr) return null;
+  
+  const invoiceDate = new Date(invoiceDateStr);
+  if (isNaN(invoiceDate.getTime())) return null;
+  
+  const today = new Date();
+  // Reset time to midnight for accurate day calculation
+  today.setHours(0, 0, 0, 0);
+  invoiceDate.setHours(0, 0, 0, 0);
+  
+  const diffTime = today.getTime() - invoiceDate.getTime();
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  
+  return diffDays >= 0 ? diffDays : 0;
+}
+
 function preprocessFile(text: string): string {
   const lines = text.split('\n');
   const processedLines: string[] = [];
@@ -185,10 +203,13 @@ function mapRowToInvoice(row: CsvRow, batchId: string): MapRowResult {
   // PAYMENT_DATE -> payment_date (NEW)
   // ENTER_TO_PAYMENT -> enter_to_payment (NEW)
 
+  // Parse invoice date first so we can calculate days_old from it
+  const invoiceDate = parseDate(getField(row, 'INVOICE_DATE', 'Invoice Date'));
+  
   return {
     invoice: {
       invoice_number: getField(row, 'INVOICE_NUM', 'Invoice Number', 'Invoice #'),
-      invoice_date: parseDate(getField(row, 'INVOICE_DATE', 'Invoice Date')),
+      invoice_date: invoiceDate,
       invoice_id: getField(row, 'INVOICE_ID', 'Invoice ID', 'Invoices'),
       creation_date: parseDate(getField(row, 'CREATION_DATE', 'Invoice Creation Date', 'Creation Date')),
       business_unit: getField(row, 'BUSINESS_UNIT', 'Business Unit Name', 'Business Unit'),
@@ -203,7 +224,8 @@ function mapRowToInvoice(row: CsvRow, batchId: string): MapRowResult {
       payment_status_indicator: getField(row, 'PAYMENT_STATUS_FLAG', 'Payment Status Indicator'),
       routing_attribute: getField(row, 'ROUTING_ATTRIBUTE3', 'Routing Attribute 3', 'Routing Attribute'),
       account_coding_status: getField(row, 'CODING_STATUS', 'Account Coding Status'),
-      days_old: parseNumber(getField(row, 'DAYS_OLD', 'Days Old')) as number | null,
+      // Calculate days_old dynamically from invoice_date vs current date
+      days_old: calculateDaysOld(invoiceDate),
       aging_bucket: getField(row, 'AGING', 'Aging'),
       invoice_type: getField(row, 'INVOICE_TYPE', 'Invoice Type Name', 'Invoice Type'),
       custom_invoice_status: getField(row, 'Custom Invoice Status') || null,
