@@ -32,15 +32,25 @@ const formatCurrency = (value: number) => new Intl.NumberFormat('en-CA', { style
 export function ProcessStateChart({ data, onStateClick }: ProcessStateChartProps) {
   const [viewMode, setViewMode] = useState<'count' | 'value'>('count');
   
-  const chartData = data.map((item, index) => ({
+  // Sort data by numeric prefix (01, 02, 03, etc.) to ensure proper order
+  const sortedData = [...data].sort((a, b) => {
+    const aMatch = a.state.match(/^(\d+)/);
+    const bMatch = b.state.match(/^(\d+)/);
+    const aNum = aMatch ? parseInt(aMatch[1], 10) : 999;
+    const bNum = bMatch ? parseInt(bMatch[1], 10) : 999;
+    return aNum - bNum;
+  });
+
+  const chartData = sortedData.map((item, index) => ({
     ...item,
-    name: item.state.replace(/^\d+\s*-\s*/, ''), // Remove "01 - " prefix for display
-    shortName: item.state.match(/^\d+/) ? item.state.match(/^\d+/)?.[0] : '?', // Just the number
+    name: item.state.replace(/^\d+\s*-\s*/, ''), // Remove "01 - " prefix for chart label
+    shortName: item.state.match(/^(\d+)/) ? item.state.match(/^(\d+)/)?.[1]?.padStart(2, '0') : '?', // Just the number, zero-padded
+    fullName: item.state, // Keep full name for legend display
     fill: COLORS[index % COLORS.length],
   }));
 
-  const total = data.reduce((sum, d) => sum + d.count, 0);
-  const totalValue = data.reduce((sum, d) => sum + d.value, 0);
+  const total = sortedData.reduce((sum, d) => sum + d.count, 0);
+  const totalValue = sortedData.reduce((sum, d) => sum + d.value, 0);
 
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
@@ -123,7 +133,7 @@ export function ProcessStateChart({ data, onStateClick }: ProcessStateChartProps
         </ResponsiveContainer>
       </div>
       
-      {/* Legend */}
+      {/* Legend - sorted by numeric prefix (01, 02, 03, etc.) */}
       <div className="mt-4 grid grid-cols-2 gap-1 max-h-36 overflow-y-auto">
         {chartData.map((item, index) => (
           <button 
@@ -132,7 +142,7 @@ export function ProcessStateChart({ data, onStateClick }: ProcessStateChartProps
             className="flex items-center gap-2 p-1.5 rounded hover:bg-slate-700/50 transition-colors text-left"
           >
             <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: COLORS[index % COLORS.length] }}></div>
-            <span className="text-xs text-slate-400 truncate flex-1">{item.shortName} - {item.name}</span>
+            <span className="text-xs text-slate-400 truncate flex-1">{item.fullName}</span>
             <span className="text-xs text-slate-500">
               {viewMode === 'count' ? item.count.toLocaleString() : formatCurrency(item.value)}
             </span>
