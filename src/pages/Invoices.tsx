@@ -411,6 +411,7 @@ export function Invoices() {
                 <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Amount</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Days Old</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Approval</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Approver</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Validation</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Payment</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Process State</th>
@@ -418,9 +419,9 @@ export function Invoices() {
             </thead>
             <tbody className="divide-y divide-slate-700/50">
               {loading ? (
-                <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400"><div className="flex items-center justify-center gap-2"><div className="w-5 h-5 border-2 border-sky-500 border-t-transparent rounded-full animate-spin"></div>Loading...</div></td></tr>
+                <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-400"><div className="flex items-center justify-center gap-2"><div className="w-5 h-5 border-2 border-sky-500 border-t-transparent rounded-full animate-spin"></div>Loading...</div></td></tr>
               ) : invoices.length === 0 ? (
-                <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400">No invoices found matching your filters</td></tr>
+                <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-400">No invoices found matching your filters</td></tr>
               ) : invoices.map((invoice) => (
                 <tr key={invoice.id} onClick={() => setSelectedInvoice(invoice)} className="hover:bg-slate-800/30 cursor-pointer transition-colors">
                   <td className="px-4 py-3"><p className="text-sm font-medium text-white">{invoice.invoice_number || '-'}</p><p className="text-xs text-slate-500">{formatDate(invoice.invoice_date)}</p></td>
@@ -428,6 +429,7 @@ export function Invoices() {
                   <td className="px-4 py-3"><p className="text-sm font-medium text-white">{formatCurrency(invoice.invoice_amount || 0)}</p></td>
                   <td className="px-4 py-3"><span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${(invoice.days_old || 0) > 270 ? 'bg-red-500/20 text-red-400' : (invoice.days_old || 0) > 180 ? 'bg-amber-500/20 text-amber-400' : (invoice.days_old || 0) > 90 ? 'bg-sky-500/20 text-sky-400' : 'bg-emerald-500/20 text-emerald-400'}`}>{invoice.days_old || 0}</span></td>
                   <td className="px-4 py-3"><p className="text-xs text-slate-400">{invoice.approval_status || '-'}</p></td>
+                  <td className="px-4 py-3"><p className="text-xs text-slate-400">{invoice.approver_id || '-'}</p></td>
                   <td className="px-4 py-3"><p className="text-xs text-slate-400">{invoice.validation_status || '-'}</p></td>
                   <td className="px-4 py-3"><p className="text-xs text-slate-400">{invoice.payment_status || '-'}</p></td>
                   <td className="px-4 py-3"><p className="text-xs text-slate-400 max-w-[120px] truncate">{invoice.overall_process_state?.replace(/^\d+\s*-\s*/, '') || '-'}</p></td>
