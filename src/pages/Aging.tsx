@@ -352,51 +352,51 @@ export function Aging() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="card p-6">
               <h3 className="text-lg font-semibold text-white mb-4">By Invoice Count</h3>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={bucketData as any[]} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2} dataKey="count" nameKey="bucket">
-                      {bucketData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.color} />))}
-                    </Pie>
-                    <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }} formatter={(value: number) => [value.toLocaleString(), 'Invoices']} />
-                    <Legend 
-                      layout="vertical" 
-                      align="right" 
-                      verticalAlign="middle" 
-                      payload={bucketData.map((entry) => ({
-                        value: entry.bucket,
-                        type: 'circle' as const,
-                        color: entry.color,
-                      }))}
-                      formatter={(value) => <span className="text-slate-300 text-xs">{value}</span>} 
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
+              <div className="flex items-center gap-4">
+                <div className="h-52 w-48 flex-shrink-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={bucketData as any[]} cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={2} dataKey="count" nameKey="bucket">
+                        {bucketData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.color} />))}
+                      </Pie>
+                      <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }} formatter={(value: number) => [value.toLocaleString(), 'Invoices']} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                {/* Custom legend - sorted numerically */}
+                <div className="flex-1 grid grid-cols-2 gap-x-3 gap-y-1 max-h-52 overflow-y-auto">
+                  {bucketData.map((entry) => (
+                    <div key={entry.bucket} className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: entry.color }}></div>
+                      <span className="text-slate-300 text-xs">{entry.bucket}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
 
             <div className="card p-6">
               <h3 className="text-lg font-semibold text-white mb-4">By Total Value</h3>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={bucketData as any[]} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2} dataKey="value" nameKey="bucket">
-                      {bucketData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.color} />))}
-                    </Pie>
-                    <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }} formatter={(value: number) => [formatFullCurrency(value), 'Value']} />
-                    <Legend 
-                      layout="vertical" 
-                      align="right" 
-                      verticalAlign="middle" 
-                      payload={bucketData.map((entry) => ({
-                        value: entry.bucket,
-                        type: 'circle' as const,
-                        color: entry.color,
-                      }))}
-                      formatter={(value) => <span className="text-slate-300 text-xs">{value}</span>} 
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
+              <div className="flex items-center gap-4">
+                <div className="h-52 w-48 flex-shrink-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={bucketData as any[]} cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={2} dataKey="value" nameKey="bucket">
+                        {bucketData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.color} />))}
+                      </Pie>
+                      <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }} formatter={(value: number) => [formatFullCurrency(value), 'Value']} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                {/* Custom legend - sorted numerically */}
+                <div className="flex-1 grid grid-cols-2 gap-x-3 gap-y-1 max-h-52 overflow-y-auto">
+                  {bucketData.map((entry) => (
+                    <div key={entry.bucket} className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: entry.color }}></div>
+                      <span className="text-slate-300 text-xs">{entry.bucket}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
