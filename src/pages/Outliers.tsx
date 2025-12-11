@@ -358,12 +358,12 @@ export function Outliers() {
         'Included in Analysis',
         'Invoice Date',
         'Process State',
-        'Approval Status',
-        'Validation Status',
-        'Payment Status',
+        'Approval Response',
+        'Approver ID',
+        'Coded By',
+        'Payment Method',
         'PO Type',
-        'PO Number',
-        'Aging Bucket'
+        'PO Number'
       ];
 
       // Convert data to CSV rows
@@ -377,12 +377,12 @@ export function Outliers() {
         invoice.include_in_analysis === false ? 'No' : 'Yes',
         invoice.invoice_date || '',
         invoice.overall_process_state || '',
-        invoice.approval_status || '',
-        invoice.validation_status || '',
-        invoice.payment_status || '',
+        invoice.approval_response || '',
+        invoice.approver_id || '',
+        invoice.coded_by || '',
+        invoice.payment_method || '',
         invoice.po_type || '',
-        invoice.identifying_po || '',
-        invoice.aging_bucket || ''
+        invoice.identifying_po || ''
       ]);
 
       // Build CSV content

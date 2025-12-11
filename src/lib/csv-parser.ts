@@ -67,13 +67,6 @@ function parseNumber(str: string): number | null {
   return isNaN(num) ? null : num;
 }
 
-function isFullyPaidInvoice(invoiceStatus: string): boolean {
-  if (!invoiceStatus) return false;
-  const status = invoiceStatus.trim().toLowerCase();
-  // Check INVOICE_STATUS field for "Paid" or "Fully Paid" status
-  return status === 'paid' || status === 'fully paid';
-}
-
 // Normalize PO type from various formats to "PO" or "Non-PO"
 function normalizePoType(rawValue: string): string {
   if (!rawValue) return 'Non-PO';
@@ -151,14 +144,6 @@ function mapRowToInvoice(row: CsvRow, batchId: string): MapRowResult {
   // Get overall process state using header-based lookup
   const overallProcessState = getField(row, 'INVOICE_PROCESS_STATUS', 'Overall Process State', 'Process State');
   
-  // Get INVOICE_STATUS field to check for fully paid invoices
-  const invoiceStatus = getField(row, 'INVOICE_STATUS', 'Invoice Status');
-  
-  // Skip fully paid invoices based on INVOICE_STATUS field only
-  if (isFullyPaidInvoice(invoiceStatus)) {
-    return { invoice: null, skipReason: 'fully_paid', isOutlier: false, outlierReason: null };
-  }
-
   // Check for outliers - flag them but don't skip
   let isOutlier = false;
   let outlierReason: 'high_value' | 'negative' | null = null;
@@ -172,83 +157,66 @@ function mapRowToInvoice(row: CsvRow, batchId: string): MapRowResult {
     outlierReason = 'negative';
   }
 
-  // Map all fields using header names
-  // New CSV column mapping:
-  // INVOICE_NUM -> invoice_number (first occurrence, not the duplicate at index 10)
+  // Parse invoice date first so we can calculate days_old from it
+  const invoiceDate = parseDate(getField(row, 'INVOICE_DATE', 'Invoice Date'));
+  
+  // New CSV column mapping (Output1.csv structure):
   // INVOICE_DATE -> invoice_date
   // INVOICE_ID -> invoice_id
   // CREATION_DATE -> creation_date
   // BUSINESS_UNIT -> business_unit
-  // APPROVAL_STATUS -> approval_status
   // SUPPLIER_NAME -> supplier
-  // VENDOR_TYPE -> supplier_type
+  // SUPPLIER_TYPE -> supplier_type
+  // INVOICE_NUM -> invoice_number
   // INVOICE_AMOUNT -> invoice_amount
-  // VALIDATION_STATUS -> validation_status
   // PAYMENT_METHOD_CODE -> payment_method
   // PAYMENT_TERMS -> payment_terms
-  // PAYMENT_STATUS -> payment_status
-  // CODING_STATUS -> account_coding_status
-  // DAYS_OLD -> days_old
   // INVOICE_TYPE -> invoice_type
   // PO_NONPO -> po_type
-  // CODED_BY -> coded_by (NEW)
-  // PAYMENT_STATUS_FLAG -> payment_status_indicator
-  // WFAPPROVAL_STATUS_CODE -> wfapproval_status_code (NEW)
-  // WFAPPROVAL_STATUS -> wfapproval_status (NEW)
-  // AGING -> aging_bucket
-  // INVOICE_STATUS -> invoice_status (NEW)
+  // CODED_BY -> coded_by
+  // APPROVER_ID -> approver_id
+  // APPROVAL_RESPONSE -> approval_response
+  // APPROVAL_DATE -> approval_date
   // INVOICE_PROCESS_STATUS -> overall_process_state
-  // APPROVER_ID -> approver_id (NEW)
-  // RESPONSE -> approval_response (NEW)
-  // ACTION_DATE -> action_date (NEW)
-  // ROUTING_ATTRIBUTE3 -> routing_attribute
+  // PAYMENT_AMOUNT -> payment_amount
+  // PAYMENT_DATE -> payment_date
   // PO_NUMBER -> identifying_po
-  // PAYMENT_AMOUNT -> payment_amount (NEW)
-  // PAYMENT_DATE -> payment_date (NEW)
-  // ENTER_TO_PAYMENT -> enter_to_payment (NEW)
+  // ROUTING_ATTRIBUTE1 -> routing_attribute1
+  // ROUTING_ATTRIBUTE2 -> routing_attribute2
+  // ROUTING_ATTRIBUTE3 -> routing_attribute3
+  // ROUTING_ATTRIBUTE4 -> routing_attribute4
 
-  // Parse invoice date first so we can calculate days_old from it
-  const invoiceDate = parseDate(getField(row, 'INVOICE_DATE', 'Invoice Date'));
-  
   return {
     invoice: {
-      invoice_number: getField(row, 'INVOICE_NUM', 'Invoice Number', 'Invoice #'),
       invoice_date: invoiceDate,
       invoice_id: getField(row, 'INVOICE_ID', 'Invoice ID', 'Invoices'),
       creation_date: parseDate(getField(row, 'CREATION_DATE', 'Invoice Creation Date', 'Creation Date')),
       business_unit: getField(row, 'BUSINESS_UNIT', 'Business Unit Name', 'Business Unit'),
-      approval_status: getField(row, 'APPROVAL_STATUS', 'Approval Status'),
       supplier: getField(row, 'SUPPLIER_NAME', 'Supplier', 'Vendor'),
-      supplier_type: getField(row, 'VENDOR_TYPE', 'Supplier Type'),
+      supplier_type: getField(row, 'SUPPLIER_TYPE', 'Vendor Type', 'Supplier Type'),
+      invoice_number: getField(row, 'INVOICE_NUM', 'Invoice Number', 'Invoice #'),
       invoice_amount: amount,
-      validation_status: getField(row, 'VALIDATION_STATUS', 'Validation Status'),
       payment_method: getField(row, 'PAYMENT_METHOD_CODE', 'Payment Method'),
       payment_terms: getField(row, 'PAYMENT_TERMS', 'Payment Terms Name', 'Payment Terms'),
-      payment_status: getField(row, 'PAYMENT_STATUS', 'Payment Status Name', 'Payment Status'),
-      payment_status_indicator: getField(row, 'PAYMENT_STATUS_FLAG', 'Payment Status Indicator'),
-      routing_attribute: getField(row, 'ROUTING_ATTRIBUTE3', 'Routing Attribute 3', 'Routing Attribute'),
-      account_coding_status: getField(row, 'CODING_STATUS', 'Account Coding Status'),
-      // Calculate days_old dynamically from invoice_date vs current date
-      days_old: calculateDaysOld(invoiceDate),
-      aging_bucket: getField(row, 'AGING', 'Aging'),
       invoice_type: getField(row, 'INVOICE_TYPE', 'Invoice Type Name', 'Invoice Type'),
-      custom_invoice_status: getField(row, 'Custom Invoice Status') || null,
-      overall_process_state: overallProcessState,
       // PO_NONPO field uses "Yes" for PO and "No" for Non-PO - normalize to "PO" or "Non-PO"
       po_type: normalizePoType(getField(row, 'PO_NONPO', 'PO/Non-PO', 'PO Type')),
-      identifying_po: getField(row, 'PO_NUMBER', 'Identifying PO', 'PO Number'),
-      import_batch_id: batchId,
-      // New fields from AP Invoice Aging Report
       coded_by: getField(row, 'CODED_BY', 'Coded By') || null,
-      wfapproval_status_code: getField(row, 'WFAPPROVAL_STATUS_CODE', 'WF Approval Status Code') || null,
-      wfapproval_status: getField(row, 'WFAPPROVAL_STATUS', 'WF Approval Status') || null,
-      invoice_status: getField(row, 'INVOICE_STATUS', 'Invoice Status') || null,
       approver_id: getField(row, 'APPROVER_ID', 'Approver ID', 'Approver') || null,
-      approval_response: getField(row, 'RESPONSE', 'Response', 'Approval Response') || null,
-      action_date: parseDate(getField(row, 'ACTION_DATE', 'Action Date')),
+      approval_response: getField(row, 'APPROVAL_RESPONSE', 'Response', 'Approval Response') || null,
+      approval_date: parseDate(getField(row, 'APPROVAL_DATE', 'Approval Date')),
+      overall_process_state: overallProcessState,
       payment_amount: parseNumber(getField(row, 'PAYMENT_AMOUNT', 'Payment Amount')),
       payment_date: parseDate(getField(row, 'PAYMENT_DATE', 'Payment Date')),
-      enter_to_payment: parseNumber(getField(row, 'ENTER_TO_PAYMENT', 'Days from Initial Entry to Payment', 'Enter to Payment')),
+      identifying_po: getField(row, 'PO_NUMBER', 'Identifying PO', 'PO Number'),
+      // All 4 routing attributes
+      routing_attribute1: getField(row, 'ROUTING_ATTRIBUTE1', 'Routing Attribute 1') || null,
+      routing_attribute2: getField(row, 'ROUTING_ATTRIBUTE2', 'Routing Attribute 2') || null,
+      routing_attribute3: getField(row, 'ROUTING_ATTRIBUTE3', 'Routing Attribute 3') || null,
+      routing_attribute4: getField(row, 'ROUTING_ATTRIBUTE4', 'Routing Attribute 4') || null,
+      // Calculate days_old dynamically from invoice_date vs current date
+      days_old: calculateDaysOld(invoiceDate),
+      import_batch_id: batchId,
       // Outlier tracking
       is_outlier: isOutlier,
       outlier_reason: outlierReason,
@@ -282,7 +250,7 @@ export function parseCsvFile(file: File, batchId: string): Promise<ParseResult> 
 export function parseCsvText(text: string, batchId: string): ParseResult {
   const invoices: Omit<Invoice, 'id' | 'imported_at'>[] = [];
   let skippedCount = 0;
-  let skippedFullyPaid = 0;
+  const skippedFullyPaid = 0; // No longer tracking fully paid in new CSV format
   let outlierCount = 0;
   let outlierHighValue = 0;
   let outlierNegative = 0;
@@ -306,17 +274,16 @@ export function parseCsvText(text: string, batchId: string): ParseResult {
 
   for (const row of results.data) {
     try {
-      const { invoice, skipReason, isOutlier, outlierReason } = mapRowToInvoice(row, batchId);
-      if (invoice) {
-        invoices.push(invoice);
-        if (isOutlier) {
+      const result = mapRowToInvoice(row, batchId);
+      if (result.invoice) {
+        invoices.push(result.invoice);
+        if (result.isOutlier) {
           outlierCount++;
-          if (outlierReason === 'high_value') outlierHighValue++;
-          if (outlierReason === 'negative') outlierNegative++;
+          if (result.outlierReason === 'high_value') outlierHighValue++;
+          if (result.outlierReason === 'negative') outlierNegative++;
         }
       } else {
         skippedCount++;
-        if (skipReason === 'fully_paid') skippedFullyPaid++;
       }
     } catch (error) {
       errors.push(`Error parsing row`);

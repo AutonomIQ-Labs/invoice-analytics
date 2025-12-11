@@ -9,12 +9,10 @@ const formatCurrency = (value: number) => new Intl.NumberFormat('en-CA', { style
 const formatDate = (dateStr: string | null) => dateStr ? new Date(dateStr).toLocaleDateString('en-CA') : '-';
 
 interface FilterOptions {
-  approvalStatuses: string[];
-  validationStatuses: string[];
-  paymentStatuses: string[];
   processStates: string[];
   poTypes: string[];
-  agingBuckets: string[];
+  supplierTypes: string[];
+  paymentMethods: string[];
 }
 
 export function Invoices() {
@@ -28,13 +26,12 @@ export function Invoices() {
   const [showFilters, setShowFilters] = useState(true);
   const [currentBatchId, setCurrentBatchId] = useState<string | null>(null);
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({
-    approvalStatuses: [], validationStatuses: [], paymentStatuses: [],
-    processStates: [], poTypes: [], agingBuckets: []
+    processStates: [], poTypes: [], supplierTypes: [], paymentMethods: []
   });
   const printRef = useRef<HTMLDivElement>(null);
 
   // Sorting state
-  type SortField = 'invoice_number' | 'supplier' | 'invoice_amount' | 'days_old' | 'approval_status' | 'approver_id' | 'validation_status' | 'payment_status' | 'overall_process_state' | 'identifying_po' | 'coded_by';
+  type SortField = 'invoice_number' | 'supplier' | 'invoice_amount' | 'days_old' | 'approver_id' | 'overall_process_state' | 'identifying_po' | 'coded_by' | 'payment_method' | 'approval_response';
   const [sortField, setSortField] = useState<SortField>('days_old');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
@@ -54,12 +51,10 @@ export function Invoices() {
     search: searchParams.get('search') || '',
     supplier: searchParams.get('vendor') || '',
     invoiceNumber: searchParams.get('invoiceNumber') || '',
-    approvalStatus: searchParams.get('approvalStatus') || '',
-    validationStatus: searchParams.get('validationStatus') || '',
-    paymentStatus: searchParams.get('paymentStatus') || '',
     processState: searchParams.get('state') || '',
     poType: searchParams.get('poType') || '',
-    agingBucket: searchParams.get('aging') || '',
+    supplierType: searchParams.get('supplierType') || '',
+    paymentMethod: searchParams.get('paymentMethod') || '',
     minAmount: searchParams.get('minAmount') || '',
     maxAmount: searchParams.get('maxAmount') || '',
     minDaysOld: searchParams.get('minDays') || '',
@@ -103,18 +98,16 @@ export function Invoices() {
       
       const { data } = await supabase
         .from('invoices')
-        .select('approval_status, validation_status, payment_status, overall_process_state, po_type, aging_bucket')
+        .select('overall_process_state, po_type, supplier_type, payment_method')
         .eq('import_batch_id', currentBatchId);
       
       if (data) {
         const unique = (arr: (string | null)[]) => [...new Set(arr.filter(Boolean))].sort() as string[];
         setFilterOptions({
-          approvalStatuses: unique(data.map(d => d.approval_status)),
-          validationStatuses: unique(data.map(d => d.validation_status)),
-          paymentStatuses: unique(data.map(d => d.payment_status)),
           processStates: unique(data.map(d => d.overall_process_state)),
           poTypes: unique(data.map(d => d.po_type)),
-          agingBuckets: unique(data.map(d => d.aging_bucket)),
+          supplierTypes: unique(data.map(d => d.supplier_type)),
+          paymentMethods: unique(data.map(d => d.payment_method)),
         });
       }
     }
@@ -132,40 +125,30 @@ export function Invoices() {
     query = query.eq('import_batch_id', currentBatchId);
     
     // Filter out excluded outliers (only show invoices where include_in_analysis is NOT false)
-    // Using .not() instead of .or() to avoid multiple .or() conflicts
-    // This matches the dashboard behavior which excludes outliers from calculations
     query = query.not('include_in_analysis', 'eq', false);
 
-    // Build OR conditions for search - must be done carefully to avoid multiple .or() calls
+    // Build OR conditions for search
     if (filters.search) {
       const searchTerm = filters.search.replace(/'/g, "''"); // Escape single quotes
       query = query.or(`supplier.ilike.%${searchTerm}%,invoice_number.ilike.%${searchTerm}%,invoice_id.ilike.%${searchTerm}%`);
     }
     if (filters.supplier) query = query.ilike('supplier', `%${filters.supplier}%`);
     if (filters.invoiceNumber) query = query.ilike('invoice_number', `%${filters.invoiceNumber}%`);
-    if (filters.approvalStatus) query = query.eq('approval_status', filters.approvalStatus);
-    if (filters.validationStatus) query = query.eq('validation_status', filters.validationStatus);
-    if (filters.paymentStatus) query = query.eq('payment_status', filters.paymentStatus);
     if (filters.processState) query = query.eq('overall_process_state', filters.processState);
+    if (filters.supplierType) query = query.eq('supplier_type', filters.supplierType);
+    if (filters.paymentMethod) query = query.eq('payment_method', filters.paymentMethod);
     
     // Handle PO type filter - data is normalized to "PO" or "Non-PO"
-    // CSV uses "Yes" for PO and "No" for Non-PO, but parser normalizes to "PO"/"Non-PO"
     if (filters.poType) {
       if (filters.poType.toUpperCase() === 'PO' || filters.poType.toUpperCase() === 'YES') {
-        // Match "PO" exactly (normalized value)
         query = query.eq('po_type', 'PO');
       } else if (filters.poType.toUpperCase() === 'NON-PO' || filters.poType.toUpperCase() === 'NONPO' || filters.poType.toUpperCase() === 'NO') {
-        // Match "Non-PO" exactly (normalized value)
         query = query.eq('po_type', 'Non-PO');
       } else {
-        // For any other value from dropdown, do exact match
         query = query.eq('po_type', filters.poType);
       }
     }
     
-    // Note: agingBucket filter is kept for backward compatibility with dropdown
-    // but dashboard now uses minDays/maxDays for accurate filtering
-    if (filters.agingBucket) query = query.eq('aging_bucket', filters.agingBucket);
     if (filters.minAmount) query = query.gte('invoice_amount', parseFloat(filters.minAmount));
     if (filters.maxAmount) query = query.lte('invoice_amount', parseFloat(filters.maxAmount));
     if (filters.minDaysOld) query = query.gte('days_old', parseInt(filters.minDaysOld));
@@ -208,10 +191,10 @@ export function Invoices() {
     setFilters(prev => ({ ...prev, [key]: value }));
     setPage(1);
     if (value) {
-      const paramKey = key === 'supplier' ? 'vendor' : key === 'processState' ? 'state' : key === 'agingBucket' ? 'aging' : key === 'minDaysOld' ? 'minDays' : key === 'maxDaysOld' ? 'maxDays' : key;
+      const paramKey = key === 'supplier' ? 'vendor' : key === 'processState' ? 'state' : key === 'minDaysOld' ? 'minDays' : key === 'maxDaysOld' ? 'maxDays' : key;
       searchParams.set(paramKey, value);
     } else {
-      const paramKey = key === 'supplier' ? 'vendor' : key === 'processState' ? 'state' : key === 'agingBucket' ? 'aging' : key === 'minDaysOld' ? 'minDays' : key === 'maxDaysOld' ? 'maxDays' : key;
+      const paramKey = key === 'supplier' ? 'vendor' : key === 'processState' ? 'state' : key === 'minDaysOld' ? 'minDays' : key === 'maxDaysOld' ? 'maxDays' : key;
       searchParams.delete(paramKey);
     }
     setSearchParams(searchParams);
@@ -219,9 +202,8 @@ export function Invoices() {
 
   const clearFilters = () => {
     setFilters({
-      search: '', supplier: '', invoiceNumber: '', approvalStatus: '',
-      validationStatus: '', paymentStatus: '', processState: '', poType: '',
-      agingBucket: '', minAmount: '', maxAmount: '', minDaysOld: '', maxDaysOld: ''
+      search: '', supplier: '', invoiceNumber: '', processState: '', poType: '',
+      supplierType: '', paymentMethod: '', minAmount: '', maxAmount: '', minDaysOld: '', maxDaysOld: ''
     });
     setPage(1);
     setSearchParams({});
@@ -241,23 +223,19 @@ export function Invoices() {
     while (hasMore) {
       let query = supabase.from('invoices').select('*').eq('import_batch_id', currentBatchId);
       
-      // Filter out excluded outliers (only show invoices where include_in_analysis is NOT false)
-      // Using .not() instead of .or() to avoid multiple .or() conflicts
+      // Filter out excluded outliers
       query = query.not('include_in_analysis', 'eq', false);
 
-      // Build OR conditions for search - must be done carefully to avoid multiple .or() calls
       if (filters.search) {
-        const searchTerm = filters.search.replace(/'/g, "''"); // Escape single quotes
+        const searchTerm = filters.search.replace(/'/g, "''");
         query = query.or(`supplier.ilike.%${searchTerm}%,invoice_number.ilike.%${searchTerm}%,invoice_id.ilike.%${searchTerm}%`);
       }
       if (filters.supplier) query = query.ilike('supplier', `%${filters.supplier}%`);
       if (filters.invoiceNumber) query = query.ilike('invoice_number', `%${filters.invoiceNumber}%`);
-      if (filters.approvalStatus) query = query.eq('approval_status', filters.approvalStatus);
-      if (filters.validationStatus) query = query.eq('validation_status', filters.validationStatus);
-      if (filters.paymentStatus) query = query.eq('payment_status', filters.paymentStatus);
       if (filters.processState) query = query.eq('overall_process_state', filters.processState);
+      if (filters.supplierType) query = query.eq('supplier_type', filters.supplierType);
+      if (filters.paymentMethod) query = query.eq('payment_method', filters.paymentMethod);
       
-      // Handle PO type filter - data is normalized to "PO" or "Non-PO"
       if (filters.poType) {
         if (filters.poType.toUpperCase() === 'PO' || filters.poType.toUpperCase() === 'YES') {
           query = query.eq('po_type', 'PO');
@@ -268,13 +246,11 @@ export function Invoices() {
         }
       }
       
-      if (filters.agingBucket) query = query.eq('aging_bucket', filters.agingBucket);
       if (filters.minAmount) query = query.gte('invoice_amount', parseFloat(filters.minAmount));
       if (filters.maxAmount) query = query.lte('invoice_amount', parseFloat(filters.maxAmount));
       if (filters.minDaysOld) query = query.gte('days_old', parseInt(filters.minDaysOld));
       if (filters.maxDaysOld) query = query.lte('days_old', parseInt(filters.maxDaysOld));
 
-      // Apply user-selected sorting
       query = query.order(sortField, { ascending: sortDirection === 'asc' });
       query = query.range(pg * pageSize, (pg + 1) * pageSize - 1);
 
@@ -287,7 +263,6 @@ export function Invoices() {
       pg++;
     }
 
-    // Apply dynamic days_old calculation based on current date
     return applyDynamicDaysOldToAll(allInvoices);
   };
 
@@ -298,17 +273,16 @@ export function Invoices() {
       const exportData = await fetchAllInvoices();
       if (exportData.length === 0) { alert('No data to export'); return; }
 
-      const headers = ['Invoice Number', 'Invoice ID', 'Invoice Date', 'Creation Date', 'Vendor', 'Supplier Type', 'Amount', 'Days Old', 'Aging', 'Approval Status', 'Validation Status', 'Payment Status', 'Payment Method', 'Payment Terms', 'Process State', 'Invoice Status', 'Custom Status', 'PO Type', 'PO Number', 'Business Unit', 'Account Coding', 'Routing Attribute', 'Coded By', 'Approver ID', 'WF Approval Status', 'Approval Response', 'Action Date', 'Payment Amount', 'Payment Date', 'Enter to Payment'];
+      const headers = ['Invoice Number', 'Invoice ID', 'Invoice Date', 'Creation Date', 'Vendor', 'Supplier Type', 'Amount', 'Days Old', 'Process State', 'Payment Method', 'Payment Terms', 'Invoice Type', 'PO Type', 'PO Number', 'Coded By', 'Approver ID', 'Approval Response', 'Approval Date', 'Payment Amount', 'Payment Date', 'Business Unit', 'Routing Attr 1', 'Routing Attr 2', 'Routing Attr 3', 'Routing Attr 4'];
 
       const rows = exportData.map(inv => [
         inv.invoice_number || '', inv.invoice_id || '', inv.invoice_date || '', inv.creation_date || '',
         inv.supplier || '', inv.supplier_type || '', inv.invoice_amount || 0, inv.days_old || 0,
-        inv.aging_bucket || '', inv.approval_status || '', inv.validation_status || '',
-        inv.payment_status || '', inv.payment_method || '', inv.payment_terms || '',
-        inv.overall_process_state || '', inv.invoice_status || '', inv.custom_invoice_status || '', inv.po_type || '',
-        inv.identifying_po || '', inv.business_unit || '', inv.account_coding_status || '', inv.routing_attribute || '',
-        inv.coded_by || '', inv.approver_id || '', inv.wfapproval_status || '', inv.approval_response || '',
-        inv.action_date || '', inv.payment_amount || '', inv.payment_date || '', inv.enter_to_payment || ''
+        inv.overall_process_state || '', inv.payment_method || '', inv.payment_terms || '',
+        inv.invoice_type || '', inv.po_type || '', inv.identifying_po || '',
+        inv.coded_by || '', inv.approver_id || '', inv.approval_response || '', inv.approval_date || '',
+        inv.payment_amount || '', inv.payment_date || '', inv.business_unit || '',
+        inv.routing_attribute1 || '', inv.routing_attribute2 || '', inv.routing_attribute3 || '', inv.routing_attribute4 || ''
       ]);
 
       const csvContent = [headers.join(','), ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))].join('\n');
@@ -358,7 +332,7 @@ export function Invoices() {
 
       const activeFiltersText = Object.entries(filters).filter(([_, v]) => v !== '').map(([k, v]) => `${k}: ${v}`).join(', ') || 'None';
 
-      printWindow.document.write(`<!DOCTYPE html><html><head><title>Invoice Report - ${new Date().toLocaleDateString('en-CA')}</title><style>* { margin: 0; padding: 0; box-sizing: border-box; } body { font-family: Arial, sans-serif; padding: 20px; color: #333; font-size: 11px; } .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #0ea5e9; padding-bottom: 15px; } .header h1 { color: #0ea5e9; font-size: 24px; margin-bottom: 5px; } .header p { color: #666; } .summary { display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; } .summary-card { flex: 1; min-width: 150px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; text-align: center; } .summary-card .value { font-size: 20px; font-weight: bold; color: #0ea5e9; } .summary-card .label { font-size: 10px; color: #64748b; margin-top: 3px; } .section { margin-bottom: 20px; } .section h3 { color: #334155; font-size: 14px; margin-bottom: 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; } .breakdown { display: flex; gap: 20px; flex-wrap: wrap; } .breakdown-group { flex: 1; min-width: 200px; } .breakdown-item { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #f1f5f9; } .breakdown-item .name { color: #475569; } .breakdown-item .stats { color: #64748b; } table { width: 100%; border-collapse: collapse; font-size: 9px; } th { background: #0ea5e9; color: white; padding: 8px 4px; text-align: left; font-weight: 600; } td { padding: 6px 4px; border-bottom: 1px solid #e2e8f0; } tr:nth-child(even) { background: #f8fafc; } .amount { text-align: right; font-family: monospace; } .filters { background: #fef3c7; border: 1px solid #fcd34d; border-radius: 6px; padding: 10px; margin-bottom: 15px; font-size: 10px; } .filters strong { color: #92400e; } .footer { margin-top: 20px; text-align: center; color: #94a3b8; font-size: 10px; border-top: 1px solid #e2e8f0; padding-top: 10px; } @media print { body { padding: 10px; } .no-print { display: none; } }</style></head><body><div class="header"><h1>SKG Payables Invoice Report</h1><p>Saskatchewan Health Authority - Generated ${new Date().toLocaleString('en-CA')}</p></div>${activeFilterCount > 0 ? `<div class="filters"><strong>Active Filters:</strong> ${activeFiltersText}</div>` : ''}<div class="summary"><div class="summary-card"><div class="value">${exportData.length.toLocaleString()}</div><div class="label">Total Invoices</div></div><div class="summary-card"><div class="value">${formatCurrency(totalValue)}</div><div class="label">Total Value</div></div><div class="summary-card"><div class="value">${Math.round(avgDaysOld)}</div><div class="label">Avg Days Old</div></div></div><div class="section"><h3>Breakdown Summary</h3><div class="breakdown"><div class="breakdown-group"><strong style="font-size: 11px; color: #334155;">By Process State</strong>${Object.entries(stateGroups).sort((a, b) => b[1].value - a[1].value).slice(0, 8).map(([state, data]) => `<div class="breakdown-item"><span class="name">${state}</span><span class="stats">${data.count} inv · ${formatCurrency(data.value)}</span></div>`).join('')}</div><div class="breakdown-group"><strong style="font-size: 11px; color: #334155;">By PO Type</strong>${Object.entries(poGroups).sort((a, b) => b[1].value - a[1].value).map(([type, data]) => `<div class="breakdown-item"><span class="name">${type}</span><span class="stats">${data.count} inv · ${formatCurrency(data.value)}</span></div>`).join('')}</div></div></div><div class="section"><h3>Invoice Details (${exportData.length} records)</h3><table><thead><tr><th>Invoice #</th><th>Vendor</th><th>Amount</th><th>Days</th><th>Process State</th><th>Approval</th><th>Approver</th><th>Payment</th><th>PO Type</th></tr></thead><tbody>${exportData.slice(0, 500).map(inv => `<tr><td>${inv.invoice_number || '-'}</td><td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${inv.supplier || '-'}</td><td class="amount">${formatCurrency(inv.invoice_amount || 0)}</td><td>${inv.days_old || '-'}</td><td style="max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${inv.overall_process_state?.replace(/^\d+\s*-\s*/, '') || '-'}</td><td>${inv.approval_status || '-'}</td><td>${inv.approver_id || '-'}</td><td>${inv.payment_status || '-'}</td><td>${inv.po_type || '-'}</td></tr>`).join('')}${exportData.length > 500 ? `<tr><td colspan="9" style="text-align: center; color: #94a3b8; font-style: italic;">... and ${exportData.length - 500} more records (showing first 500)</td></tr>` : ''}</tbody></table></div><div class="footer"><p>Report generated from SKG Invoice Analytics Dashboard</p><p>Total records: ${exportData.length} | Total value: ${formatCurrency(totalValue)}</p></div><script>window.onload = function() { window.print(); }</script></body></html>`);
+      printWindow.document.write(`<!DOCTYPE html><html><head><title>Invoice Report - ${new Date().toLocaleDateString('en-CA')}</title><style>* { margin: 0; padding: 0; box-sizing: border-box; } body { font-family: Arial, sans-serif; padding: 20px; color: #333; font-size: 11px; } .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #0ea5e9; padding-bottom: 15px; } .header h1 { color: #0ea5e9; font-size: 24px; margin-bottom: 5px; } .header p { color: #666; } .summary { display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; } .summary-card { flex: 1; min-width: 150px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; text-align: center; } .summary-card .value { font-size: 20px; font-weight: bold; color: #0ea5e9; } .summary-card .label { font-size: 10px; color: #64748b; margin-top: 3px; } .section { margin-bottom: 20px; } .section h3 { color: #334155; font-size: 14px; margin-bottom: 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; } .breakdown { display: flex; gap: 20px; flex-wrap: wrap; } .breakdown-group { flex: 1; min-width: 200px; } .breakdown-item { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #f1f5f9; } .breakdown-item .name { color: #475569; } .breakdown-item .stats { color: #64748b; } table { width: 100%; border-collapse: collapse; font-size: 9px; } th { background: #0ea5e9; color: white; padding: 8px 4px; text-align: left; font-weight: 600; } td { padding: 6px 4px; border-bottom: 1px solid #e2e8f0; } tr:nth-child(even) { background: #f8fafc; } .amount { text-align: right; font-family: monospace; } .filters { background: #fef3c7; border: 1px solid #fcd34d; border-radius: 6px; padding: 10px; margin-bottom: 15px; font-size: 10px; } .filters strong { color: #92400e; } .footer { margin-top: 20px; text-align: center; color: #94a3b8; font-size: 10px; border-top: 1px solid #e2e8f0; padding-top: 10px; } @media print { body { padding: 10px; } .no-print { display: none; } }</style></head><body><div class="header"><h1>SKG Payables Invoice Report</h1><p>Saskatchewan Health Authority - Generated ${new Date().toLocaleString('en-CA')}</p></div>${activeFilterCount > 0 ? `<div class="filters"><strong>Active Filters:</strong> ${activeFiltersText}</div>` : ''}<div class="summary"><div class="summary-card"><div class="value">${exportData.length.toLocaleString()}</div><div class="label">Total Invoices</div></div><div class="summary-card"><div class="value">${formatCurrency(totalValue)}</div><div class="label">Total Value</div></div><div class="summary-card"><div class="value">${Math.round(avgDaysOld)}</div><div class="label">Avg Days Old</div></div></div><div class="section"><h3>Breakdown Summary</h3><div class="breakdown"><div class="breakdown-group"><strong style="font-size: 11px; color: #334155;">By Process State</strong>${Object.entries(stateGroups).sort((a, b) => b[1].value - a[1].value).slice(0, 8).map(([state, data]) => `<div class="breakdown-item"><span class="name">${state}</span><span class="stats">${data.count} inv · ${formatCurrency(data.value)}</span></div>`).join('')}</div><div class="breakdown-group"><strong style="font-size: 11px; color: #334155;">By PO Type</strong>${Object.entries(poGroups).sort((a, b) => b[1].value - a[1].value).map(([type, data]) => `<div class="breakdown-item"><span class="name">${type}</span><span class="stats">${data.count} inv · ${formatCurrency(data.value)}</span></div>`).join('')}</div></div></div><div class="section"><h3>Invoice Details (${exportData.length} records)</h3><table><thead><tr><th>Invoice #</th><th>Vendor</th><th>Amount</th><th>Days</th><th>Process State</th><th>Approver</th><th>Coded By</th><th>Payment Method</th><th>PO Type</th></tr></thead><tbody>${exportData.slice(0, 500).map(inv => `<tr><td>${inv.invoice_number || '-'}</td><td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${inv.supplier || '-'}</td><td class="amount">${formatCurrency(inv.invoice_amount || 0)}</td><td>${inv.days_old || '-'}</td><td style="max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${inv.overall_process_state?.replace(/^\d+\s*-\s*/, '') || '-'}</td><td>${inv.approver_id || '-'}</td><td>${inv.coded_by || '-'}</td><td>${inv.payment_method || '-'}</td><td>${inv.po_type || '-'}</td></tr>`).join('')}${exportData.length > 500 ? `<tr><td colspan="9" style="text-align: center; color: #94a3b8; font-style: italic;">... and ${exportData.length - 500} more records (showing first 500)</td></tr>` : ''}</tbody></table></div><div class="footer"><p>Report generated from SKG Invoice Analytics Dashboard</p><p>Total records: ${exportData.length} | Total value: ${formatCurrency(totalValue)}</p></div><script>window.onload = function() { window.print(); }</script></body></html>`);
       printWindow.document.close();
     } catch (error) {
       console.error('Print failed:', error);
@@ -407,11 +381,9 @@ export function Invoices() {
             <div><label className="block text-xs font-medium text-slate-400 mb-1">Vendor</label><input type="text" value={filters.supplier} onChange={(e) => updateFilter('supplier', e.target.value)} placeholder="Filter by vendor..." className="input text-sm" /></div>
             <div><label className="block text-xs font-medium text-slate-400 mb-1">Invoice Number</label><input type="text" value={filters.invoiceNumber} onChange={(e) => updateFilter('invoiceNumber', e.target.value)} placeholder="Filter by invoice #..." className="input text-sm" /></div>
             <div><label className="block text-xs font-medium text-slate-400 mb-1">Process State</label><select value={filters.processState} onChange={(e) => updateFilter('processState', e.target.value)} className="input text-sm"><option value="">All States</option>{filterOptions.processStates.map(s => <option key={s} value={s}>{s.replace(/^\d+\s*-\s*/, '')}</option>)}</select></div>
-            <div><label className="block text-xs font-medium text-slate-400 mb-1">Approval Status</label><select value={filters.approvalStatus} onChange={(e) => updateFilter('approvalStatus', e.target.value)} className="input text-sm"><option value="">All</option>{filterOptions.approvalStatuses.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
-            <div><label className="block text-xs font-medium text-slate-400 mb-1">Validation Status</label><select value={filters.validationStatus} onChange={(e) => updateFilter('validationStatus', e.target.value)} className="input text-sm"><option value="">All</option>{filterOptions.validationStatuses.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
-            <div><label className="block text-xs font-medium text-slate-400 mb-1">Payment Status</label><select value={filters.paymentStatus} onChange={(e) => updateFilter('paymentStatus', e.target.value)} className="input text-sm"><option value="">All</option>{filterOptions.paymentStatuses.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
             <div><label className="block text-xs font-medium text-slate-400 mb-1">PO Type</label><select value={filters.poType} onChange={(e) => updateFilter('poType', e.target.value)} className="input text-sm"><option value="">All</option>{filterOptions.poTypes.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
-            <div><label className="block text-xs font-medium text-slate-400 mb-1">Aging</label><select value={filters.agingBucket} onChange={(e) => updateFilter('agingBucket', e.target.value)} className="input text-sm"><option value="">All</option>{filterOptions.agingBuckets.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+            <div><label className="block text-xs font-medium text-slate-400 mb-1">Supplier Type</label><select value={filters.supplierType} onChange={(e) => updateFilter('supplierType', e.target.value)} className="input text-sm"><option value="">All</option>{filterOptions.supplierTypes.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+            <div><label className="block text-xs font-medium text-slate-400 mb-1">Payment Method</label><select value={filters.paymentMethod} onChange={(e) => updateFilter('paymentMethod', e.target.value)} className="input text-sm"><option value="">All</option>{filterOptions.paymentMethods.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
             <div><label className="block text-xs font-medium text-slate-400 mb-1">Min Amount ($)</label><input type="number" value={filters.minAmount} onChange={(e) => updateFilter('minAmount', e.target.value)} placeholder="0" className="input text-sm" /></div>
             <div><label className="block text-xs font-medium text-slate-400 mb-1">Max Amount ($)</label><input type="number" value={filters.maxAmount} onChange={(e) => updateFilter('maxAmount', e.target.value)} placeholder="999999" className="input text-sm" /></div>
             <div><label className="block text-xs font-medium text-slate-400 mb-1">Min Days Old</label><input type="number" value={filters.minDaysOld} onChange={(e) => updateFilter('minDaysOld', e.target.value)} placeholder="0" className="input text-sm" /></div>
@@ -431,19 +403,18 @@ export function Invoices() {
                 <SortableHeader field="identifying_po" label="PO Number" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                 <SortableHeader field="invoice_amount" label="Amount" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                 <SortableHeader field="days_old" label="Days Old" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
-                <SortableHeader field="approval_status" label="Approval" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+                <SortableHeader field="approval_response" label="Approval" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                 <SortableHeader field="approver_id" label="Approver" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                 <SortableHeader field="coded_by" label="Coded By" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
-                <SortableHeader field="validation_status" label="Validation" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
-                <SortableHeader field="payment_status" label="Payment" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+                <SortableHeader field="payment_method" label="Payment Method" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                 <SortableHeader field="overall_process_state" label="Process State" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-700/50">
               {loading ? (
-                <tr><td colSpan={11} className="px-4 py-8 text-center text-slate-400"><div className="flex items-center justify-center gap-2"><div className="w-5 h-5 border-2 border-sky-500 border-t-transparent rounded-full animate-spin"></div>Loading...</div></td></tr>
+                <tr><td colSpan={10} className="px-4 py-8 text-center text-slate-400"><div className="flex items-center justify-center gap-2"><div className="w-5 h-5 border-2 border-sky-500 border-t-transparent rounded-full animate-spin"></div>Loading...</div></td></tr>
               ) : invoices.length === 0 ? (
-                <tr><td colSpan={11} className="px-4 py-8 text-center text-slate-400">No invoices found matching your filters</td></tr>
+                <tr><td colSpan={10} className="px-4 py-8 text-center text-slate-400">No invoices found matching your filters</td></tr>
               ) : invoices.map((invoice) => (
                 <tr key={invoice.id} onClick={() => setSelectedInvoice(invoice)} className="hover:bg-slate-800/30 cursor-pointer transition-colors">
                   <td className="px-4 py-3"><p className="text-sm font-medium text-white">{invoice.invoice_number || '-'}</p><p className="text-xs text-slate-500">{formatDate(invoice.invoice_date)}</p></td>
@@ -451,11 +422,10 @@ export function Invoices() {
                   <td className="px-4 py-3"><p className="text-xs text-slate-400">{invoice.identifying_po || '-'}</p></td>
                   <td className="px-4 py-3"><p className="text-sm font-medium text-white">{formatCurrency(invoice.invoice_amount || 0)}</p></td>
                   <td className="px-4 py-3"><span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${(invoice.days_old || 0) > 270 ? 'bg-red-500/20 text-red-400' : (invoice.days_old || 0) > 180 ? 'bg-amber-500/20 text-amber-400' : (invoice.days_old || 0) > 90 ? 'bg-sky-500/20 text-sky-400' : 'bg-emerald-500/20 text-emerald-400'}`}>{invoice.days_old || 0}</span></td>
-                  <td className="px-4 py-3"><p className="text-xs text-slate-400">{invoice.approval_status || '-'}</p></td>
+                  <td className="px-4 py-3"><p className="text-xs text-slate-400">{invoice.approval_response || '-'}</p></td>
                   <td className="px-4 py-3"><p className="text-xs text-slate-400">{invoice.approver_id || '-'}</p></td>
                   <td className="px-4 py-3"><p className="text-xs text-slate-400">{invoice.coded_by || '-'}</p></td>
-                  <td className="px-4 py-3"><p className="text-xs text-slate-400">{invoice.validation_status || '-'}</p></td>
-                  <td className="px-4 py-3"><p className="text-xs text-slate-400">{invoice.payment_status || '-'}</p></td>
+                  <td className="px-4 py-3"><p className="text-xs text-slate-400">{invoice.payment_method || '-'}</p></td>
                   <td className="px-4 py-3"><p className="text-xs text-slate-400 max-w-[120px] truncate">{invoice.overall_process_state?.replace(/^\d+\s*-\s*/, '') || '-'}</p></td>
                 </tr>
               ))}
@@ -491,6 +461,7 @@ export function Invoices() {
                 <div className="bg-slate-800/50 rounded-lg p-4 text-center"><p className={`text-2xl font-bold ${(selectedInvoice.days_old || 0) > 90 ? 'text-amber-400' : 'text-emerald-400'}`}>{selectedInvoice.days_old}</p><p className="text-sm text-slate-400">Days Old</p></div>
                 <div className="bg-slate-800/50 rounded-lg p-4 text-center"><p className="text-lg font-bold text-sky-400">{selectedInvoice.overall_process_state?.replace(/^\d+\s*-\s*/, '') || '-'}</p><p className="text-sm text-slate-400">Process State</p></div>
               </div>
+              
               {/* Basic Information */}
               <h3 className="text-sm font-semibold text-slate-300 mb-3">Basic Information</h3>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
@@ -499,35 +470,26 @@ export function Invoices() {
                 <DetailField label="Invoice ID" value={selectedInvoice.invoice_id} />
                 <DetailField label="Invoice Date" value={formatDate(selectedInvoice.invoice_date)} />
                 <DetailField label="Creation Date" value={formatDate(selectedInvoice.creation_date)} />
-                <DetailField label="Aging Bucket" value={selectedInvoice.aging_bucket} />
                 <DetailField label="Invoice Type" value={selectedInvoice.invoice_type} />
-                <DetailField label="Invoice Status" value={selectedInvoice.invoice_status} />
                 <DetailField label="Business Unit" value={selectedInvoice.business_unit} />
               </div>
 
-              {/* Status & Approval */}
-              <h3 className="text-sm font-semibold text-slate-300 mb-3">Status & Approval</h3>
+              {/* Approval Information */}
+              <h3 className="text-sm font-semibold text-slate-300 mb-3">Approval Information</h3>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
-                <DetailField label="Approval Status" value={selectedInvoice.approval_status} />
-                <DetailField label="Validation Status" value={selectedInvoice.validation_status} />
-                <DetailField label="Account Coding" value={selectedInvoice.account_coding_status} />
                 <DetailField label="Coded By" value={selectedInvoice.coded_by} />
                 <DetailField label="Approver ID" value={selectedInvoice.approver_id} />
-                <DetailField label="WF Approval Status" value={selectedInvoice.wfapproval_status} />
-                <DetailField label="WF Status Code" value={selectedInvoice.wfapproval_status_code} />
                 <DetailField label="Approval Response" value={selectedInvoice.approval_response} />
-                <DetailField label="Action Date" value={formatDate(selectedInvoice.action_date)} />
+                <DetailField label="Approval Date" value={formatDate(selectedInvoice.approval_date)} />
               </div>
 
               {/* Payment Information */}
               <h3 className="text-sm font-semibold text-slate-300 mb-3">Payment Information</h3>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
-                <DetailField label="Payment Status" value={selectedInvoice.payment_status} />
                 <DetailField label="Payment Method" value={selectedInvoice.payment_method} />
                 <DetailField label="Payment Terms" value={selectedInvoice.payment_terms} />
                 <DetailField label="Payment Amount" value={selectedInvoice.payment_amount ? formatCurrency(selectedInvoice.payment_amount) : null} />
                 <DetailField label="Payment Date" value={formatDate(selectedInvoice.payment_date)} />
-                <DetailField label="Enter to Payment" value={selectedInvoice.enter_to_payment?.toString()} />
               </div>
 
               {/* PO & Routing */}
@@ -535,7 +497,10 @@ export function Invoices() {
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <DetailField label="PO Type" value={selectedInvoice.po_type} />
                 <DetailField label="PO Number" value={selectedInvoice.identifying_po} />
-                <DetailField label="Routing Attribute" value={selectedInvoice.routing_attribute} />
+                <DetailField label="Routing Attr 1" value={selectedInvoice.routing_attribute1} />
+                <DetailField label="Routing Attr 2" value={selectedInvoice.routing_attribute2} />
+                <DetailField label="Routing Attr 3" value={selectedInvoice.routing_attribute3} />
+                <DetailField label="Routing Attr 4" value={selectedInvoice.routing_attribute4} />
               </div>
             </div>
           </div>
@@ -554,7 +519,7 @@ function DetailField({ label, value }: { label: string; value: string | null | u
   );
 }
 
-type SortField = 'invoice_number' | 'supplier' | 'invoice_amount' | 'days_old' | 'approval_status' | 'approver_id' | 'validation_status' | 'payment_status' | 'overall_process_state' | 'identifying_po' | 'coded_by';
+type SortField = 'invoice_number' | 'supplier' | 'invoice_amount' | 'days_old' | 'approver_id' | 'overall_process_state' | 'identifying_po' | 'coded_by' | 'payment_method' | 'approval_response';
 
 function SortableHeader({ 
   field, 

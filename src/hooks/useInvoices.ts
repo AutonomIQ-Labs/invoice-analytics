@@ -39,7 +39,8 @@ interface UseInvoicesOptions {
   pageSize?: number;
   supplier?: string;
   overallProcessState?: string;
-  agingBucket?: string;
+  minDays?: number;
+  maxDays?: number;
   minAmount?: number;
   maxAmount?: number;
   sortBy?: keyof Invoice;
@@ -82,7 +83,8 @@ export function useInvoices(options: UseInvoicesOptions = {}) {
     pageSize = 50,
     supplier,
     overallProcessState,
-    agingBucket,
+    minDays,
+    maxDays,
     minAmount,
     maxAmount,
     sortBy = 'days_old',
@@ -121,7 +123,8 @@ export function useInvoices(options: UseInvoicesOptions = {}) {
 
       if (supplier) query = query.ilike('supplier', `%${supplier}%`);
       if (overallProcessState) query = query.eq('overall_process_state', overallProcessState);
-      if (agingBucket) query = query.eq('aging_bucket', agingBucket);
+      if (minDays !== undefined) query = query.gte('days_old', minDays);
+      if (maxDays !== undefined) query = query.lte('days_old', maxDays);
       if (minAmount !== undefined) query = query.gte('invoice_amount', minAmount);
       if (maxAmount !== undefined) query = query.lte('invoice_amount', maxAmount);
 
@@ -144,7 +147,7 @@ export function useInvoices(options: UseInvoicesOptions = {}) {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, supplier, overallProcessState, agingBucket, minAmount, maxAmount, sortBy, sortOrder, batchId, includeOutliers]);
+  }, [page, pageSize, supplier, overallProcessState, minDays, maxDays, minAmount, maxAmount, sortBy, sortOrder, batchId, includeOutliers]);
 
   useEffect(() => {
     fetchInvoices();
@@ -356,9 +359,12 @@ export function useDashboardStats() {
         value: readyForPaymentInvoices.reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0),
       };
 
+      // Investigation invoices - based on process state containing "Investigation"
+      // Note: The new CSV format (Output1.csv) only has INVOICE_PROCESS_STATUS field.
+      // Previously, custom_invoice_status was also checked, but that field is not
+      // present in the new data format.
       const investigationInvoices = invoices.filter(inv => 
-        inv.overall_process_state?.includes('Investigation') || 
-        inv.custom_invoice_status?.includes('Investigation')
+        inv.overall_process_state?.includes('Investigation')
       );
       const requiresInvestigation = {
         count: investigationInvoices.length,

@@ -1,10 +1,10 @@
 # Database Migration Guide
 
-## Single Combined Import Schema
+## New CSV Format (Output1.csv)
 
-This application uses a single combined CSV import containing all invoice data from the AP Invoice Aging Report.
+This application uses a simplified CSV format with the following fields.
 
-### Current Schema (v2.0 - AP Invoice Aging Report Format)
+### Current Schema (v3.0 - Simplified Output1.csv Format)
 
 ```sql
 -- Import batches table
@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS import_batches (
   is_deleted BOOLEAN DEFAULT false
 );
 
--- Invoices table with all fields from AP Invoice Aging Report
+-- Invoices table with all fields from Output1.csv
 CREATE TABLE IF NOT EXISTS invoices (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   -- Basic invoice information
@@ -34,36 +34,28 @@ CREATE TABLE IF NOT EXISTS invoices (
   invoice_number TEXT,
   invoice_amount NUMERIC(15,2),
   invoice_type TEXT,
-  invoice_status TEXT,
   days_old INTEGER,
-  aging_bucket TEXT,
   -- Supplier information
   supplier TEXT,
   supplier_type TEXT,
   -- Approval & Workflow
-  approval_status TEXT,
-  validation_status TEXT,
-  account_coding_status TEXT,
   coded_by TEXT,
   approver_id TEXT,
-  wfapproval_status_code TEXT,
-  wfapproval_status TEXT,
   approval_response TEXT,
-  action_date DATE,
-  custom_invoice_status TEXT,
+  approval_date DATE,
   overall_process_state TEXT,
   -- Payment information
-  payment_status TEXT,
-  payment_status_indicator TEXT,
   payment_method TEXT,
   payment_terms TEXT,
   payment_amount NUMERIC(15,2),
   payment_date DATE,
-  enter_to_payment NUMERIC(15,2),
   -- PO & Routing
   po_type TEXT,
   identifying_po TEXT,
-  routing_attribute TEXT,
+  routing_attribute1 TEXT,
+  routing_attribute2 TEXT,
+  routing_attribute3 TEXT,
+  routing_attribute4 TEXT,
   -- Import tracking
   import_batch_id UUID REFERENCES import_batches(id),
   imported_at TIMESTAMPTZ DEFAULT NOW(),
@@ -82,74 +74,73 @@ CREATE INDEX IF NOT EXISTS idx_invoices_approver ON invoices(approver_id);
 CREATE INDEX IF NOT EXISTS idx_import_batches_current ON import_batches(is_current);
 ```
 
-### Migration from Previous Schema (v1.x)
+### Migration from Previous Schema (v2.x)
 
-If migrating from the previous schema, add the new columns:
+If migrating from the previous schema, add/modify columns:
 
 ```sql
--- Add new columns to invoices table
-ALTER TABLE invoices ADD COLUMN IF NOT EXISTS coded_by TEXT;
-ALTER TABLE invoices ADD COLUMN IF NOT EXISTS wfapproval_status_code TEXT;
-ALTER TABLE invoices ADD COLUMN IF NOT EXISTS wfapproval_status TEXT;
-ALTER TABLE invoices ADD COLUMN IF NOT EXISTS invoice_status TEXT;
-ALTER TABLE invoices ADD COLUMN IF NOT EXISTS approver_id TEXT;
-ALTER TABLE invoices ADD COLUMN IF NOT EXISTS approval_response TEXT;
-ALTER TABLE invoices ADD COLUMN IF NOT EXISTS action_date DATE;
-ALTER TABLE invoices ADD COLUMN IF NOT EXISTS payment_amount NUMERIC(15,2);
-ALTER TABLE invoices ADD COLUMN IF NOT EXISTS payment_date DATE;
-ALTER TABLE invoices ADD COLUMN IF NOT EXISTS enter_to_payment NUMERIC(15,2);
+-- Add new routing attribute columns
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS routing_attribute1 TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS routing_attribute2 TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS routing_attribute3 TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS routing_attribute4 TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS approval_date DATE;
 
--- Add new indexes for better query performance
-CREATE INDEX IF NOT EXISTS idx_invoices_process_state ON invoices(overall_process_state);
-CREATE INDEX IF NOT EXISTS idx_invoices_approver ON invoices(approver_id);
-
--- Remove obsolete columns from import_batches (if exists)
-ALTER TABLE import_batches DROP COLUMN IF EXISTS skipped_zero_value;
-ALTER TABLE import_batches DROP COLUMN IF EXISTS aging_category;
+-- Optional: Remove columns no longer used in new CSV format
+-- Note: Only do this if you don't need to support the old CSV format
+ALTER TABLE invoices DROP COLUMN IF EXISTS approval_status;
+ALTER TABLE invoices DROP COLUMN IF EXISTS validation_status;
+ALTER TABLE invoices DROP COLUMN IF EXISTS payment_status;
+ALTER TABLE invoices DROP COLUMN IF EXISTS payment_status_indicator;
+ALTER TABLE invoices DROP COLUMN IF EXISTS account_coding_status;
+ALTER TABLE invoices DROP COLUMN IF EXISTS aging_bucket;
+ALTER TABLE invoices DROP COLUMN IF EXISTS invoice_status;
+ALTER TABLE invoices DROP COLUMN IF EXISTS custom_invoice_status;
+ALTER TABLE invoices DROP COLUMN IF EXISTS wfapproval_status_code;
+ALTER TABLE invoices DROP COLUMN IF EXISTS wfapproval_status;
+ALTER TABLE invoices DROP COLUMN IF EXISTS action_date;
+ALTER TABLE invoices DROP COLUMN IF EXISTS enter_to_payment;
+ALTER TABLE invoices DROP COLUMN IF EXISTS routing_attribute;
 ```
 
-### CSV Column Mapping
+### CSV Column Mapping (Output1.csv)
 
-The new AP Invoice Aging Report CSV uses the following column mapping:
+The new Output1.csv uses the following column mapping:
 
-| CSV Header             | Database Column         |
-|------------------------|-------------------------|
-| INVOICE_NUM            | invoice_number          |
-| INVOICE_DATE           | invoice_date            |
-| INVOICE_ID             | invoice_id              |
-| CREATION_DATE          | creation_date           |
-| BUSINESS_UNIT          | business_unit           |
-| APPROVAL_STATUS        | approval_status         |
-| SUPPLIER_NAME          | supplier                |
-| VENDOR_TYPE            | supplier_type           |
-| INVOICE_AMOUNT         | invoice_amount          |
-| VALIDATION_STATUS      | validation_status       |
-| PAYMENT_METHOD_CODE    | payment_method          |
-| PAYMENT_TERMS          | payment_terms           |
-| PAYMENT_STATUS         | payment_status          |
-| PAYMENT_STATUS_FLAG    | payment_status_indicator|
-| CODING_STATUS          | account_coding_status   |
-| DAYS_OLD               | days_old                |
-| AGING                  | aging_bucket            |
-| INVOICE_TYPE           | invoice_type            |
-| PO_NONPO               | po_type                 |
-| CODED_BY               | coded_by                |
-| WFAPPROVAL_STATUS_CODE | wfapproval_status_code  |
-| WFAPPROVAL_STATUS      | wfapproval_status       |
-| INVOICE_STATUS         | invoice_status          |
-| INVOICE_PROCESS_STATUS | overall_process_state   |
-| APPROVER_ID            | approver_id             |
-| RESPONSE               | approval_response       |
-| ACTION_DATE            | action_date             |
-| ROUTING_ATTRIBUTE3     | routing_attribute       |
-| PO_NUMBER              | identifying_po          |
-| PAYMENT_AMOUNT         | payment_amount          |
-| PAYMENT_DATE           | payment_date            |
-| ENTER_TO_PAYMENT       | enter_to_payment        |
+| CSV Header            | Database Column         |
+|-----------------------|-------------------------|
+| INVOICE_DATE          | invoice_date            |
+| INVOICE_ID            | invoice_id              |
+| CREATION_DATE         | creation_date           |
+| BUSINESS_UNIT         | business_unit           |
+| SUPPLIER_NAME         | supplier                |
+| SUPPLIER_TYPE         | supplier_type           |
+| INVOICE_NUM           | invoice_number          |
+| INVOICE_AMOUNT        | invoice_amount          |
+| PAYMENT_METHOD_CODE   | payment_method          |
+| PAYMENT_TERMS         | payment_terms           |
+| INVOICE_TYPE          | invoice_type            |
+| PO_NONPO              | po_type                 |
+| CODED_BY              | coded_by                |
+| APPROVER_ID           | approver_id             |
+| APPROVAL_RESPONSE     | approval_response       |
+| APPROVAL_DATE         | approval_date           |
+| INVOICE_PROCESS_STATUS| overall_process_state   |
+| PAYMENT_AMOUNT        | payment_amount          |
+| PAYMENT_DATE          | payment_date            |
+| PO_NUMBER             | identifying_po          |
+| ROUTING_ATTRIBUTE1    | routing_attribute1      |
+| ROUTING_ATTRIBUTE2    | routing_attribute2      |
+| ROUTING_ATTRIBUTE3    | routing_attribute3      |
+| ROUTING_ATTRIBUTE4    | routing_attribute4      |
+
+### Calculated Fields
+
+- `days_old` - Calculated dynamically from `invoice_date` vs current date during import and display
 
 ### Notes
 
-- Zero-value invoices are now pre-filtered in the source data, so no filtering is applied during import
-- "09 - Fully Paid" invoices are still filtered out during import
-- Date fields support ISO 8601 format (e.g., `2025-11-30T18:00:00.000-06:00`)
-- Outliers (high-value in "01 - Header To Be Verified" state, or negative amounts) are flagged but not filtered
+- PO_NONPO values "Yes"/"No" are normalized to "PO"/"Non-PO" during import
+- Date fields support ISO 8601 format (e.g., `2025-11-30T18:00:00.000-06:00`) and YYYY-MM-DD
+- Outliers (high-value >$100K in "01 - Header To Be Verified" state, or negative amounts) are flagged but not filtered
+- Outliers are excluded from dashboard analytics by default but can be managed in the Outliers page

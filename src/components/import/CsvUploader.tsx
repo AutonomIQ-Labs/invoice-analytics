@@ -74,7 +74,7 @@ export function CsvUploader({ onImportComplete }: CsvUploaderProps) {
       } = await parseCsvFile(file, batch.id);
 
       if (invoices.length === 0) {
-        throw new Error('No valid invoices found. Fully paid (process state 09) invoices are filtered out.');
+        throw new Error('No valid invoices found in the CSV file.');
       }
 
       setProgress({ status: 'uploading', message: `Uploading ${invoices.length.toLocaleString()} invoices...`, progress: 40 });
@@ -153,7 +153,7 @@ export function CsvUploader({ onImportComplete }: CsvUploaderProps) {
             Browse Files
             <input type="file" accept=".csv,.txt" onChange={handleFileInput} className="hidden" />
           </label>
-          <p className="text-slate-500 text-xs mt-4">"09 - Fully Paid" invoices are filtered out</p>
+          <p className="text-slate-500 text-xs mt-4">Supports CSV format with columns like INVOICE_DATE, SUPPLIER_NAME, etc.</p>
         </div>
       )}
 
@@ -189,8 +189,8 @@ export function CsvUploader({ onImportComplete }: CsvUploaderProps) {
               <p className="text-xs text-slate-400">Imported</p>
             </div>
             <div className="bg-slate-800/50 rounded-lg p-4 text-center">
-              <p className="text-2xl font-bold text-blue-400">{progress.result.skippedFullyPaid.toLocaleString()}</p>
-              <p className="text-xs text-slate-400">Skipped (Fully Paid)</p>
+              <p className="text-2xl font-bold text-slate-400">{progress.result.skipped.toLocaleString()}</p>
+              <p className="text-xs text-slate-400">Skipped</p>
             </div>
           </div>
 
@@ -222,10 +222,6 @@ export function CsvUploader({ onImportComplete }: CsvUploaderProps) {
               </p>
             </div>
           )}
-
-          <div className="text-center text-sm text-slate-400 mb-4">
-            Total skipped: {progress.result.skipped.toLocaleString()} invoices
-          </div>
 
           {progress.result.errors.length > 0 && (
             <div className="mb-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">

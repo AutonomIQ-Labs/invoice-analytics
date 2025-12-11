@@ -84,7 +84,6 @@ export function LastImportSummary() {
     );
   }
 
-  const hasDetailedStats = (batch.skipped_fully_paid ?? 0) > 0 || (batch.outlier_count ?? 0) > 0;
   const outlierCount = batch.outlier_count ?? 0;
 
   return (
@@ -109,10 +108,10 @@ export function LastImportSummary() {
           <p className="text-2xl font-bold text-emerald-400">{batch.record_count.toLocaleString()}</p>
           <p className="text-xs text-slate-400">Imported</p>
         </div>
-        {/* Fully Paid */}
+        {/* Skipped */}
         <div className="bg-slate-800/50 rounded-lg p-4 text-center">
-          <p className="text-2xl font-bold text-blue-400">{(batch.skipped_fully_paid ?? 0).toLocaleString()}</p>
-          <p className="text-xs text-slate-400">Skipped (Fully Paid)</p>
+          <p className="text-2xl font-bold text-slate-400">{batch.skipped_count.toLocaleString()}</p>
+          <p className="text-xs text-slate-400">Skipped</p>
         </div>
       </div>
 
@@ -145,17 +144,6 @@ export function LastImportSummary() {
         </div>
       )}
 
-      {/* Total Skipped */}
-      <div className="text-center text-sm text-slate-400">
-        Total skipped: {batch.skipped_count.toLocaleString()} invoices
-      </div>
-
-      {/* Note for older imports without detailed stats */}
-      {!hasDetailedStats && batch.record_count > 0 && (
-        <div className="text-xs text-slate-500 text-center mt-3 pt-3 border-t border-slate-700/50">
-          Detailed breakdown not available for this import. Re-import to see full stats.
-        </div>
-      )}
     </div>
   );
 }

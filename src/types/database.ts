@@ -1,41 +1,36 @@
 export interface Invoice {
   id: string;
+  // Core invoice fields from new CSV
   invoice_date: string | null;
   invoice_id: string | null;
   creation_date: string | null;
   business_unit: string | null;
-  approval_status: string | null;
   supplier: string | null;
   supplier_type: string | null;
   invoice_number: string | null;
   invoice_amount: number | null;
-  validation_status: string | null;
   payment_method: string | null;
   payment_terms: string | null;
-  payment_status: string | null;
-  payment_status_indicator: string | null;
-  routing_attribute: string | null;
-  account_coding_status: string | null;
-  days_old: number | null;
-  aging_bucket: string | null;
   invoice_type: string | null;
-  custom_invoice_status: string | null;
-  overall_process_state: string | null;
   po_type: string | null;
-  identifying_po: string | null;
-  import_batch_id: string | null;
-  imported_at: string;
-  // New fields from AP Invoice Aging Report
   coded_by: string | null;
-  wfapproval_status_code: string | null;
-  wfapproval_status: string | null;
-  invoice_status: string | null;
   approver_id: string | null;
   approval_response: string | null;
-  action_date: string | null;
+  approval_date: string | null;
+  overall_process_state: string | null;
   payment_amount: number | null;
   payment_date: string | null;
-  enter_to_payment: number | null;
+  identifying_po: string | null;
+  // Routing attributes (4 total)
+  routing_attribute1: string | null;
+  routing_attribute2: string | null;
+  routing_attribute3: string | null;
+  routing_attribute4: string | null;
+  // Calculated fields
+  days_old: number | null;
+  // Import tracking
+  import_batch_id: string | null;
+  imported_at: string;
   // Outlier tracking fields
   is_outlier?: boolean;
   outlier_reason?: 'high_value' | 'negative' | null;
