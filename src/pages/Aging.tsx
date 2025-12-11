@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import type { Invoice } from '../types/database';
-import { getMonthlyBuckets } from '../hooks/useInvoices';
+import { getMonthlyBuckets, applyDynamicDaysOldToAll } from '../hooks/useInvoices';
 import { Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend, ComposedChart, Line } from 'recharts';
 
 const formatCurrency = (value: number) => new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD', notation: 'compact', maximumFractionDigits: 1 }).format(value);
@@ -97,7 +97,8 @@ export function Aging() {
         page++;
       }
 
-      const invoices = allInvoices;
+      // Apply dynamic days_old calculation based on current date
+      const invoices = applyDynamicDaysOldToAll(allInvoices);
       
       // Get unified monthly buckets
       const monthlyBuckets = getMonthlyBuckets();

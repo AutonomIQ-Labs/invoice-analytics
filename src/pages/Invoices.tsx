@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { applyDynamicDaysOldToAll } from '../hooks/useInvoices';
 import type { Invoice } from '../types/database';
 
 const formatCurrency = (value: number) => new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD', minimumFractionDigits: 2 }).format(value);
@@ -191,7 +192,9 @@ export function Invoices() {
       setLoading(true);
       const { data, count, error } = await buildQuery();
       if (!error) {
-        setInvoices((data as Invoice[]) || []);
+        // Apply dynamic days_old calculation based on current date
+        const invoicesWithDynamicAge = applyDynamicDaysOldToAll((data as Invoice[]) || []);
+        setInvoices(invoicesWithDynamicAge);
         setTotalCount(count || 0);
       }
       setLoading(false);
@@ -284,7 +287,8 @@ export function Invoices() {
       pg++;
     }
 
-    return allInvoices;
+    // Apply dynamic days_old calculation based on current date
+    return applyDynamicDaysOldToAll(allInvoices);
   };
 
   // Export to CSV

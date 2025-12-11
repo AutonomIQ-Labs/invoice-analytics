@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
+import { applyDynamicDaysOldToAll } from '../hooks/useInvoices';
 import type { Invoice } from '../types/database';
 
 // HTML escape helper to prevent XSS in print output
@@ -95,7 +96,8 @@ export function Outliers() {
         page++;
       }
 
-      const outlierData = allOutliers;
+      // Apply dynamic days_old calculation based on current date
+      const outlierData = applyDynamicDaysOldToAll(allOutliers);
       setOutliers(outlierData);
 
       // Calculate stats

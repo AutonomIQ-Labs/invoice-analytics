@@ -2,6 +2,38 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import type { Invoice, ImportBatch } from '../types/database';
 
+// Calculate days old dynamically from invoice_date vs current date
+// This ensures the age is always accurate, not stale from import time
+export function calculateDaysOld(invoiceDateStr: string | null): number | null {
+  if (!invoiceDateStr) return null;
+  
+  const invoiceDate = new Date(invoiceDateStr);
+  if (isNaN(invoiceDate.getTime())) return null;
+  
+  const today = new Date();
+  // Reset time to midnight for accurate day calculation
+  today.setHours(0, 0, 0, 0);
+  invoiceDate.setHours(0, 0, 0, 0);
+  
+  const diffTime = today.getTime() - invoiceDate.getTime();
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  
+  return diffDays >= 0 ? diffDays : 0;
+}
+
+// Apply dynamic days_old calculation to an invoice
+function applyDynamicDaysOld(invoice: Invoice): Invoice {
+  return {
+    ...invoice,
+    days_old: calculateDaysOld(invoice.invoice_date)
+  };
+}
+
+// Apply dynamic days_old calculation to an array of invoices
+export function applyDynamicDaysOldToAll(invoices: Invoice[]): Invoice[] {
+  return invoices.map(applyDynamicDaysOld);
+}
+
 interface UseInvoicesOptions {
   page?: number;
   pageSize?: number;
@@ -103,7 +135,9 @@ export function useInvoices(options: UseInvoicesOptions = {}) {
 
       if (queryError) throw queryError;
 
-      setInvoices((data as Invoice[]) || []);
+      // Apply dynamic days_old calculation based on current date
+      const invoicesWithDynamicAge = applyDynamicDaysOldToAll((data as Invoice[]) || []);
+      setInvoices(invoicesWithDynamicAge);
       setTotalCount(count || 0);
     } catch (err) {
       setError(err as Error);
@@ -287,9 +321,10 @@ export function useDashboardStats() {
         page++;
       }
 
-      const invoices = allInvoices;
+      // Apply dynamic days_old calculation based on current date
+      const invoices = applyDynamicDaysOldToAll(allInvoices);
       
-      // Calculate outlier stats from all invoices
+      // Calculate outlier stats from all invoices (also with dynamic days_old)
       const outlierInvoices = allInvoicesWithOutliers.filter(inv => inv.is_outlier === true);
       // Included: explicitly true OR null/undefined (default behavior includes them)
       const includedOutliers = outlierInvoices.filter(inv => 
