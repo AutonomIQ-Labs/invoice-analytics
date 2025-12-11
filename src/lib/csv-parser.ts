@@ -67,11 +67,11 @@ function parseNumber(str: string): number | null {
   return isNaN(num) ? null : num;
 }
 
-function isFullyPaidState(processState: string): boolean {
-  if (!processState) return false;
-  const state = processState.trim();
-  // Check for "09 - Fully Paid" process state
-  return state.startsWith('09') || state.toLowerCase().includes('fully paid');
+function isFullyPaidInvoice(invoiceStatus: string): boolean {
+  if (!invoiceStatus) return false;
+  const status = invoiceStatus.trim().toLowerCase();
+  // Check INVOICE_STATUS field for "Paid" or "Fully Paid" status
+  return status === 'paid' || status === 'fully paid';
 }
 
 // Calculate days old from invoice date vs current date
@@ -150,8 +150,11 @@ function mapRowToInvoice(row: CsvRow, batchId: string): MapRowResult {
   // Get overall process state using header-based lookup
   const overallProcessState = getField(row, 'INVOICE_PROCESS_STATUS', 'Overall Process State', 'Process State');
   
-  // Skip fully paid invoices based on Overall Process State
-  if (isFullyPaidState(overallProcessState)) {
+  // Get INVOICE_STATUS field to check for fully paid invoices
+  const invoiceStatus = getField(row, 'INVOICE_STATUS', 'Invoice Status');
+  
+  // Skip fully paid invoices based on INVOICE_STATUS field only
+  if (isFullyPaidInvoice(invoiceStatus)) {
     return { invoice: null, skipReason: 'fully_paid', isOutlier: false, outlierReason: null };
   }
 

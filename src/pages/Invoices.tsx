@@ -32,6 +32,23 @@ export function Invoices() {
   });
   const printRef = useRef<HTMLDivElement>(null);
 
+  // Sorting state
+  type SortField = 'invoice_number' | 'supplier' | 'invoice_amount' | 'days_old' | 'approval_status' | 'approver_id' | 'validation_status' | 'payment_status' | 'overall_process_state';
+  const [sortField, setSortField] = useState<SortField>('days_old');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      // Toggle direction if same field
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      // New field, default to descending (largest first)
+      setSortField(field);
+      setSortDirection('desc');
+    }
+    setPage(1); // Reset to first page when sorting
+  };
+
   const [filters, setFilters] = useState({
     search: searchParams.get('search') || '',
     supplier: searchParams.get('vendor') || '',
@@ -155,7 +172,8 @@ export function Invoices() {
     if (filters.minDaysOld) query = query.gte('days_old', parseInt(filters.minDaysOld));
     if (filters.maxDaysOld) query = query.lte('days_old', parseInt(filters.maxDaysOld));
 
-    query = query.order('days_old', { ascending: false });
+    // Apply user-selected sorting
+    query = query.order(sortField, { ascending: sortDirection === 'asc' });
     
     const from = (page - 1) * 25;
     query = query.range(from, from + 24);
@@ -181,7 +199,7 @@ export function Invoices() {
       setLoading(false);
     }
     fetchInvoices();
-  }, [filters, page, currentBatchId, refreshTrigger]);
+  }, [filters, page, currentBatchId, refreshTrigger, sortField, sortDirection]);
 
   const totalPages = Math.ceil(totalCount / 25);
 
@@ -256,7 +274,8 @@ export function Invoices() {
       if (filters.minDaysOld) query = query.gte('days_old', parseInt(filters.minDaysOld));
       if (filters.maxDaysOld) query = query.lte('days_old', parseInt(filters.maxDaysOld));
 
-      query = query.order('days_old', { ascending: false });
+      // Apply user-selected sorting
+      query = query.order(sortField, { ascending: sortDirection === 'asc' });
       query = query.range(pg * pageSize, (pg + 1) * pageSize - 1);
 
       const { data, error } = await query;
@@ -406,15 +425,15 @@ export function Invoices() {
           <table className="w-full">
             <thead className="bg-slate-800/50">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Invoice</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Vendor</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Amount</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Days Old</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Approval</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Approver</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Validation</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Payment</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Process State</th>
+                <SortableHeader field="invoice_number" label="Invoice" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+                <SortableHeader field="supplier" label="Vendor" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+                <SortableHeader field="invoice_amount" label="Amount" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+                <SortableHeader field="days_old" label="Days Old" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+                <SortableHeader field="approval_status" label="Approval" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+                <SortableHeader field="approver_id" label="Approver" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+                <SortableHeader field="validation_status" label="Validation" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+                <SortableHeader field="payment_status" label="Payment" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+                <SortableHeader field="overall_process_state" label="Process State" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-700/50">
@@ -527,5 +546,53 @@ function DetailField({ label, value }: { label: string; value: string | null | u
       <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">{label}</p>
       <p className="text-sm text-white truncate" title={value || '-'}>{value || '-'}</p>
     </div>
+  );
+}
+
+type SortField = 'invoice_number' | 'supplier' | 'invoice_amount' | 'days_old' | 'approval_status' | 'approver_id' | 'validation_status' | 'payment_status' | 'overall_process_state';
+
+function SortableHeader({ 
+  field, 
+  label, 
+  sortField, 
+  sortDirection, 
+  onSort 
+}: { 
+  field: SortField; 
+  label: string; 
+  sortField: SortField; 
+  sortDirection: 'asc' | 'desc'; 
+  onSort: (field: SortField) => void;
+}) {
+  const isActive = sortField === field;
+  
+  return (
+    <th 
+      onClick={() => onSort(field)}
+      className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider cursor-pointer select-none hover:bg-slate-700/50 transition-colors group"
+    >
+      <div className="flex items-center gap-1.5">
+        <span className={isActive ? 'text-sky-400' : 'text-slate-400 group-hover:text-slate-300'}>
+          {label}
+        </span>
+        <span className="flex flex-col">
+          {isActive ? (
+            sortDirection === 'asc' ? (
+              <svg className="w-3.5 h-3.5 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+              </svg>
+            ) : (
+              <svg className="w-3.5 h-3.5 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            )
+          ) : (
+            <svg className="w-3.5 h-3.5 text-slate-600 group-hover:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+            </svg>
+          )}
+        </span>
+      </div>
+    </th>
   );
 }
