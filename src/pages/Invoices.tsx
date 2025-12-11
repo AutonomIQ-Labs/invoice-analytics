@@ -33,7 +33,7 @@ export function Invoices() {
   const printRef = useRef<HTMLDivElement>(null);
 
   // Sorting state
-  type SortField = 'invoice_number' | 'supplier' | 'invoice_amount' | 'days_old' | 'approval_status' | 'approver_id' | 'validation_status' | 'payment_status' | 'overall_process_state' | 'identifying_po';
+  type SortField = 'invoice_number' | 'supplier' | 'invoice_amount' | 'days_old' | 'approval_status' | 'approver_id' | 'validation_status' | 'payment_status' | 'overall_process_state' | 'identifying_po' | 'coded_by';
   const [sortField, setSortField] = useState<SortField>('days_old');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
@@ -429,6 +429,7 @@ export function Invoices() {
                 <SortableHeader field="days_old" label="Days Old" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                 <SortableHeader field="approval_status" label="Approval" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                 <SortableHeader field="approver_id" label="Approver" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+                <SortableHeader field="coded_by" label="Coded By" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                 <SortableHeader field="validation_status" label="Validation" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                 <SortableHeader field="payment_status" label="Payment" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                 <SortableHeader field="overall_process_state" label="Process State" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
@@ -436,9 +437,9 @@ export function Invoices() {
             </thead>
             <tbody className="divide-y divide-slate-700/50">
               {loading ? (
-                <tr><td colSpan={10} className="px-4 py-8 text-center text-slate-400"><div className="flex items-center justify-center gap-2"><div className="w-5 h-5 border-2 border-sky-500 border-t-transparent rounded-full animate-spin"></div>Loading...</div></td></tr>
+                <tr><td colSpan={11} className="px-4 py-8 text-center text-slate-400"><div className="flex items-center justify-center gap-2"><div className="w-5 h-5 border-2 border-sky-500 border-t-transparent rounded-full animate-spin"></div>Loading...</div></td></tr>
               ) : invoices.length === 0 ? (
-                <tr><td colSpan={10} className="px-4 py-8 text-center text-slate-400">No invoices found matching your filters</td></tr>
+                <tr><td colSpan={11} className="px-4 py-8 text-center text-slate-400">No invoices found matching your filters</td></tr>
               ) : invoices.map((invoice) => (
                 <tr key={invoice.id} onClick={() => setSelectedInvoice(invoice)} className="hover:bg-slate-800/30 cursor-pointer transition-colors">
                   <td className="px-4 py-3"><p className="text-sm font-medium text-white">{invoice.invoice_number || '-'}</p><p className="text-xs text-slate-500">{formatDate(invoice.invoice_date)}</p></td>
@@ -448,6 +449,7 @@ export function Invoices() {
                   <td className="px-4 py-3"><span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${(invoice.days_old || 0) > 270 ? 'bg-red-500/20 text-red-400' : (invoice.days_old || 0) > 180 ? 'bg-amber-500/20 text-amber-400' : (invoice.days_old || 0) > 90 ? 'bg-sky-500/20 text-sky-400' : 'bg-emerald-500/20 text-emerald-400'}`}>{invoice.days_old || 0}</span></td>
                   <td className="px-4 py-3"><p className="text-xs text-slate-400">{invoice.approval_status || '-'}</p></td>
                   <td className="px-4 py-3"><p className="text-xs text-slate-400">{invoice.approver_id || '-'}</p></td>
+                  <td className="px-4 py-3"><p className="text-xs text-slate-400">{invoice.coded_by || '-'}</p></td>
                   <td className="px-4 py-3"><p className="text-xs text-slate-400">{invoice.validation_status || '-'}</p></td>
                   <td className="px-4 py-3"><p className="text-xs text-slate-400">{invoice.payment_status || '-'}</p></td>
                   <td className="px-4 py-3"><p className="text-xs text-slate-400 max-w-[120px] truncate">{invoice.overall_process_state?.replace(/^\d+\s*-\s*/, '') || '-'}</p></td>
@@ -548,7 +550,7 @@ function DetailField({ label, value }: { label: string; value: string | null | u
   );
 }
 
-type SortField = 'invoice_number' | 'supplier' | 'invoice_amount' | 'days_old' | 'approval_status' | 'approver_id' | 'validation_status' | 'payment_status' | 'overall_process_state' | 'identifying_po';
+type SortField = 'invoice_number' | 'supplier' | 'invoice_amount' | 'days_old' | 'approval_status' | 'approver_id' | 'validation_status' | 'payment_status' | 'overall_process_state' | 'identifying_po' | 'coded_by';
 
 function SortableHeader({ 
   field, 
