@@ -48,6 +48,7 @@ export interface ImportBatch {
   is_deleted?: boolean;
   // Detailed import statistics
   skipped_fully_paid?: number;
+  skipped_zero_value?: number;
   outlier_count?: number;
   outlier_high_value?: number;
   outlier_negative?: number;

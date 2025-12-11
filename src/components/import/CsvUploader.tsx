@@ -16,6 +16,7 @@ interface ImportProgress {
     imported: number; 
     skipped: number; 
     skippedFullyPaid: number;
+    skippedZeroValue: number;
     outlierCount: number;
     outlierHighValue: number;
     outlierNegative: number;
@@ -67,6 +68,7 @@ export function CsvUploader({ onImportComplete }: CsvUploaderProps) {
         invoices, 
         skippedCount, 
         skippedFullyPaid,
+        skippedZeroValue,
         outlierCount,
         outlierHighValue,
         outlierNegative,
@@ -96,6 +98,7 @@ export function CsvUploader({ onImportComplete }: CsvUploaderProps) {
         record_count: invoices.length, 
         skipped_count: skippedCount,
         skipped_fully_paid: skippedFullyPaid,
+        skipped_zero_value: skippedZeroValue,
         outlier_count: outlierCount,
         outlier_high_value: outlierHighValue,
         outlier_negative: outlierNegative
@@ -109,6 +112,7 @@ export function CsvUploader({ onImportComplete }: CsvUploaderProps) {
           imported: invoices.length, 
           skipped: skippedCount, 
           skippedFullyPaid,
+          skippedZeroValue,
           outlierCount,
           outlierHighValue,
           outlierNegative,
@@ -153,7 +157,7 @@ export function CsvUploader({ onImportComplete }: CsvUploaderProps) {
             Browse Files
             <input type="file" accept=".csv,.txt" onChange={handleFileInput} className="hidden" />
           </label>
-          <p className="text-slate-500 text-xs mt-4">Supports CSV format with columns like INVOICE_DATE, SUPPLIER_NAME, etc.</p>
+          <p className="text-slate-500 text-xs mt-4">Zero-value and fully paid invoices are automatically filtered out</p>
         </div>
       )}
 
@@ -190,9 +194,31 @@ export function CsvUploader({ onImportComplete }: CsvUploaderProps) {
             </div>
             <div className="bg-slate-800/50 rounded-lg p-4 text-center">
               <p className="text-2xl font-bold text-slate-400">{progress.result.skipped.toLocaleString()}</p>
-              <p className="text-xs text-slate-400">Skipped</p>
+              <p className="text-xs text-slate-400">Skipped (Total)</p>
             </div>
           </div>
+
+          {/* Skipped Breakdown - show if any were skipped */}
+          {progress.result.skipped > 0 && (
+            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 mb-4">
+              <div className="flex items-center gap-2 mb-3">
+                <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className="text-blue-400 font-medium">Filtered Out</span>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="text-center">
+                  <p className="text-xl font-bold text-blue-400">{progress.result.skippedFullyPaid.toLocaleString()}</p>
+                  <p className="text-xs text-slate-400">Fully Paid (09)</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-xl font-bold text-slate-400">{progress.result.skippedZeroValue.toLocaleString()}</p>
+                  <p className="text-xs text-slate-400">Zero Value</p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Outlier Stats */}
           {progress.result.outlierCount > 0 && (

@@ -9,6 +9,7 @@ export interface ParseResult {
   invoices: Omit<Invoice, 'id' | 'imported_at'>[];
   skippedCount: number;
   skippedFullyPaid: number;
+  skippedZeroValue: number;
   outlierCount: number;
   outlierHighValue: number;
   outlierNegative: number;
@@ -67,6 +68,24 @@ function parseNumber(str: string): number | null {
   return isNaN(num) ? null : num;
 }
 
+// Check if invoice should be skipped (zero-value or fully paid)
+function shouldSkipInvoice(amount: number, processState: string): { skip: boolean; reason: 'zero_value' | 'fully_paid' | null } {
+  // Skip zero-value invoices
+  if (amount === 0) {
+    return { skip: true, reason: 'zero_value' };
+  }
+  
+  // Skip fully paid invoices - check process state for "09" prefix or "Fully Paid"
+  if (processState) {
+    const state = processState.trim();
+    if (state.startsWith('09') || state.toLowerCase().includes('fully paid')) {
+      return { skip: true, reason: 'fully_paid' };
+    }
+  }
+  
+  return { skip: false, reason: null };
+}
+
 // Normalize PO type from various formats to "PO" or "Non-PO"
 function normalizePoType(rawValue: string): string {
   if (!rawValue) return 'Non-PO';
@@ -113,7 +132,7 @@ interface CsvRow {
 
 interface MapRowResult {
   invoice: Omit<Invoice, 'id' | 'imported_at'> | null;
-  skipReason: 'fully_paid' | null;
+  skipReason: 'fully_paid' | 'zero_value' | null;
   isOutlier: boolean;
   outlierReason: 'high_value' | 'negative' | null;
 }
@@ -144,6 +163,17 @@ function mapRowToInvoice(row: CsvRow, batchId: string): MapRowResult {
   // Get overall process state using header-based lookup
   const overallProcessState = getField(row, 'INVOICE_PROCESS_STATUS', 'Overall Process State', 'Process State');
   
+  // Check if invoice should be skipped (zero-value or fully paid)
+  const skipCheck = shouldSkipInvoice(amount, overallProcessState);
+  if (skipCheck.skip) {
+    return { 
+      invoice: null, 
+      skipReason: skipCheck.reason,
+      isOutlier: false, 
+      outlierReason: null 
+    };
+  }
+
   // Check for outliers - flag them but don't skip
   let isOutlier = false;
   let outlierReason: 'high_value' | 'negative' | null = null;
@@ -250,7 +280,8 @@ export function parseCsvFile(file: File, batchId: string): Promise<ParseResult> 
 export function parseCsvText(text: string, batchId: string): ParseResult {
   const invoices: Omit<Invoice, 'id' | 'imported_at'>[] = [];
   let skippedCount = 0;
-  const skippedFullyPaid = 0; // No longer tracking fully paid in new CSV format
+  let skippedFullyPaid = 0;
+  let skippedZeroValue = 0;
   let outlierCount = 0;
   let outlierHighValue = 0;
   let outlierNegative = 0;
@@ -284,6 +315,8 @@ export function parseCsvText(text: string, batchId: string): ParseResult {
         }
       } else {
         skippedCount++;
+        if (result.skipReason === 'fully_paid') skippedFullyPaid++;
+        if (result.skipReason === 'zero_value') skippedZeroValue++;
       }
     } catch (error) {
       errors.push(`Error parsing row`);
@@ -295,6 +328,7 @@ export function parseCsvText(text: string, batchId: string): ParseResult {
     invoices, 
     skippedCount, 
     skippedFullyPaid,
+    skippedZeroValue,
     outlierCount,
     outlierHighValue,
     outlierNegative,

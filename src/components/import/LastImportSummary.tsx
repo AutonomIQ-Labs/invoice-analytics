@@ -111,9 +111,31 @@ export function LastImportSummary() {
         {/* Skipped */}
         <div className="bg-slate-800/50 rounded-lg p-4 text-center">
           <p className="text-2xl font-bold text-slate-400">{batch.skipped_count.toLocaleString()}</p>
-          <p className="text-xs text-slate-400">Skipped</p>
+          <p className="text-xs text-slate-400">Skipped (Total)</p>
         </div>
       </div>
+
+      {/* Skipped Breakdown - show if any were skipped */}
+      {batch.skipped_count > 0 && (
+        <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 mb-4">
+          <div className="flex items-center gap-2 mb-3">
+            <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span className="text-blue-400 font-medium">Filtered Out</span>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="text-center">
+              <p className="text-xl font-bold text-blue-400">{(batch.skipped_fully_paid ?? 0).toLocaleString()}</p>
+              <p className="text-xs text-slate-400">Fully Paid (09)</p>
+            </div>
+            <div className="text-center">
+              <p className="text-xl font-bold text-slate-400">{(batch.skipped_zero_value ?? 0).toLocaleString()}</p>
+              <p className="text-xs text-slate-400">Zero Value</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Outlier Stats - matches CsvUploader layout */}
       {outlierCount > 0 && (

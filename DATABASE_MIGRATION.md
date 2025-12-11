@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS import_batches (
   record_count INTEGER DEFAULT 0,
   skipped_count INTEGER DEFAULT 0,
   skipped_fully_paid INTEGER DEFAULT 0,
+  skipped_zero_value INTEGER DEFAULT 0,
   outlier_count INTEGER DEFAULT 0,
   outlier_high_value INTEGER DEFAULT 0,
   outlier_negative INTEGER DEFAULT 0,
@@ -138,9 +139,18 @@ The new Output1.csv uses the following column mapping:
 
 - `days_old` - Calculated dynamically from `invoice_date` vs current date during import and display
 
+### Quick Migration: Add skipped_zero_value Column
+
+```sql
+-- Add column to track zero-value invoices that were skipped
+ALTER TABLE import_batches ADD COLUMN IF NOT EXISTS skipped_zero_value INTEGER DEFAULT 0;
+```
+
 ### Notes
 
 - PO_NONPO values "Yes"/"No" are normalized to "PO"/"Non-PO" during import
 - Date fields support ISO 8601 format (e.g., `2025-11-30T18:00:00.000-06:00`) and YYYY-MM-DD
+- Zero-value invoices (amount = 0) are automatically filtered out during import
+- Fully paid invoices (process state starts with "09" or contains "fully paid") are filtered out during import
 - Outliers (high-value >$100K in "01 - Header To Be Verified" state, or negative amounts) are flagged but not filtered
 - Outliers are excluded from dashboard analytics by default but can be managed in the Outliers page
