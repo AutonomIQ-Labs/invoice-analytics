@@ -104,25 +104,14 @@ function calculateDaysOld(invoiceDateStr: string | null): number | null {
   return diffDays >= 0 ? diffDays : 0;
 }
 
-function preprocessFile(text: string): string {
-  const lines = text.split('\n');
-  const processedLines: string[] = [];
+// Detect if file is tab-separated or comma-separated
+function detectDelimiter(text: string): string {
+  const firstLine = text.split('\n')[0] || '';
+  const tabCount = (firstLine.match(/\t/g) || []).length;
+  const commaCount = (firstLine.match(/,/g) || []).length;
   
-  for (const line of lines) {
-    if (!line.trim()) continue;
-    
-    let processed = line
-      .replace(/"\t/g, ',')
-      .replace(/\t"/g, ',')
-      .replace(/\t/g, ',')
-      .replace(/^"/, '')
-      .replace(/"$/, '')
-      .replace(/""/g, '"');
-    
-    processedLines.push(processed);
-  }
-  
-  return processedLines.join('\n');
+  // If there are more tabs than commas in the header, it's likely TSV
+  return tabCount > commaCount ? '\t' : ',';
 }
 
 interface CsvRow {
@@ -299,11 +288,15 @@ export function parseCsvText(text: string, batchId: string): ParseResult {
   let outlierNegative = 0;
   const errors: string[] = [];
 
-  const processedText = preprocessFile(text);
+  // Auto-detect delimiter (tab or comma)
+  const delimiter = detectDelimiter(text);
   
-  const results = Papa.parse<CsvRow>(processedText, {
+  const results = Papa.parse<CsvRow>(text, {
     header: true,
     skipEmptyLines: true,
+    delimiter: delimiter,
+    quoteChar: '"',
+    escapeChar: '"',
     transformHeader: (header) => header.trim(),
   });
 
