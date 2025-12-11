@@ -311,9 +311,11 @@ export function useDashboardStats() {
       const totalInvoices = invoices.length;
       const totalValue = invoices.reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0);
       
-      const readyForPaymentInvoices = invoices.filter(inv => 
-        inv.overall_process_state?.includes('Ready for Payment')
-      );
+      // Ready for Payment: INVOICE_PROCESS_STATUS = "08 - Ready for Payment"
+      const readyForPaymentInvoices = invoices.filter(inv => {
+        const state = inv.overall_process_state?.trim() || '';
+        return state.startsWith('08') || state.toLowerCase().includes('ready for payment');
+      });
       const readyForPayment = {
         count: readyForPaymentInvoices.length,
         value: readyForPaymentInvoices.reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0),
