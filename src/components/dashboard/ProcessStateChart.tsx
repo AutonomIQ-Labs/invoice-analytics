@@ -32,8 +32,14 @@ const formatCurrency = (value: number) => new Intl.NumberFormat('en-CA', { style
 export function ProcessStateChart({ data, onStateClick }: ProcessStateChartProps) {
   const [viewMode, setViewMode] = useState<'count' | 'value'>('count');
   
+  // Filter out empty/unknown states and only show valid process states (those starting with 01-10)
+  const validData = data.filter(item => {
+    const match = item.state.match(/^(\d+)/);
+    return match && parseInt(match[1], 10) >= 0 && parseInt(match[1], 10) <= 10;
+  });
+  
   // Sort data by numeric prefix (01, 02, 03, etc.) to ensure proper order
-  const sortedData = [...data].sort((a, b) => {
+  const sortedData = [...validData].sort((a, b) => {
     const aMatch = a.state.match(/^(\d+)/);
     const bMatch = b.state.match(/^(\d+)/);
     const aNum = aMatch ? parseInt(aMatch[1], 10) : 999;
@@ -44,13 +50,17 @@ export function ProcessStateChart({ data, onStateClick }: ProcessStateChartProps
   const chartData = sortedData.map((item, index) => ({
     ...item,
     name: item.state.replace(/^\d+\s*-\s*/, ''), // Remove "01 - " prefix for chart label
-    shortName: item.state.match(/^(\d+)/) ? item.state.match(/^(\d+)/)?.[1]?.padStart(2, '0') : '?', // Just the number, zero-padded
+    shortName: item.state.match(/^(\d+)/)?.[1]?.padStart(2, '0') || '??', // Just the number, zero-padded
     fullName: item.state, // Keep full name for legend display
     fill: COLORS[index % COLORS.length],
   }));
 
-  const total = sortedData.reduce((sum, d) => sum + d.count, 0);
-  const totalValue = sortedData.reduce((sum, d) => sum + d.value, 0);
+  // Calculate totals from original data (including unknown) for percentage calculations
+  const total = data.reduce((sum, d) => sum + d.count, 0);
+  const totalValue = data.reduce((sum, d) => sum + d.value, 0);
+  
+  // Calculate how many are in unknown/empty states
+  const unknownCount = data.filter(item => !item.state.match(/^(\d+)/)).reduce((sum, d) => sum + d.count, 0);
 
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
@@ -68,7 +78,7 @@ export function ProcessStateChart({ data, onStateClick }: ProcessStateChartProps
     return null;
   };
 
-  if (!data || data.length === 0) {
+  if (!data || data.length === 0 || chartData.length === 0) {
     return (
       <div className="card p-6">
         <h3 className="text-lg font-semibold text-white mb-4">Process State Distribution</h3>
@@ -149,6 +159,13 @@ export function ProcessStateChart({ data, onStateClick }: ProcessStateChartProps
           </button>
         ))}
       </div>
+      
+      {/* Note about unknown process states */}
+      {unknownCount > 0 && (
+        <p className="mt-2 text-xs text-slate-500">
+          * {unknownCount.toLocaleString()} invoice{unknownCount !== 1 ? 's' : ''} with unknown process state not shown
+        </p>
+      )}
     </div>
   );
 }
