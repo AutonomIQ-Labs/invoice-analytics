@@ -385,17 +385,13 @@ export function useDashboardStats() {
       // PO vs Non-PO breakdown - normalized to only PO and Non-PO categories
       const poMap = new Map<string, { count: number; value: number }>();
       invoices.forEach(inv => {
-        // Normalize PO type - anything that's not explicitly "PO" goes to "Non-PO"
+        // Normalize PO type - CSV uses "Yes" for PO and "No" for Non-PO
         let poType: string;
         const rawPoType = (inv.po_type || '').trim().toUpperCase();
-        if (rawPoType === 'PO') {
+        if (rawPoType === 'PO' || rawPoType === 'YES') {
           poType = 'PO';
-        } else if (rawPoType === 'NON-PO' || rawPoType === 'NONPO' || rawPoType === 'NON PO') {
-          poType = 'Non-PO';
-        } else if (rawPoType === '') {
-          // Empty po_type - check if there's an identifying_po value
-          poType = inv.identifying_po ? 'PO' : 'Non-PO';
         } else {
+          // Everything else (including "No", "Non-PO", empty, etc.) is Non-PO
           poType = 'Non-PO';
         }
         

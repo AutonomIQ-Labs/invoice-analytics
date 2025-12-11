@@ -33,7 +33,7 @@ export function Invoices() {
   const printRef = useRef<HTMLDivElement>(null);
 
   // Sorting state
-  type SortField = 'invoice_number' | 'supplier' | 'invoice_amount' | 'days_old' | 'approval_status' | 'approver_id' | 'validation_status' | 'payment_status' | 'overall_process_state';
+  type SortField = 'invoice_number' | 'supplier' | 'invoice_amount' | 'days_old' | 'approval_status' | 'approver_id' | 'validation_status' | 'payment_status' | 'overall_process_state' | 'identifying_po';
   const [sortField, setSortField] = useState<SortField>('days_old');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
@@ -147,17 +147,15 @@ export function Invoices() {
     if (filters.paymentStatus) query = query.eq('payment_status', filters.paymentStatus);
     if (filters.processState) query = query.eq('overall_process_state', filters.processState);
     
-    // Handle PO type filter - dashboard sends normalized values "PO" or "Non-PO"
-    // Note: Dashboard also considers empty po_type + identifying_po as "PO", but that requires
-    // complex nested OR/AND logic that would conflict with other filters. This simpler version
-    // covers 99.7%+ of cases correctly based on po_type field only.
+    // Handle PO type filter - data is normalized to "PO" or "Non-PO"
+    // CSV uses "Yes" for PO and "No" for Non-PO, but parser normalizes to "PO"/"Non-PO"
     if (filters.poType) {
-      if (filters.poType.toUpperCase() === 'PO') {
-        // Match "PO" (case-insensitive)
-        query = query.ilike('po_type', 'PO');
-      } else if (filters.poType.toUpperCase() === 'NON-PO' || filters.poType.toUpperCase() === 'NONPO') {
-        // Match anything that's NOT "PO" (case-insensitive) - includes null, empty, "Non-PO", etc.
-        query = query.not('po_type', 'ilike', 'PO');
+      if (filters.poType.toUpperCase() === 'PO' || filters.poType.toUpperCase() === 'YES') {
+        // Match "PO" exactly (normalized value)
+        query = query.eq('po_type', 'PO');
+      } else if (filters.poType.toUpperCase() === 'NON-PO' || filters.poType.toUpperCase() === 'NONPO' || filters.poType.toUpperCase() === 'NO') {
+        // Match "Non-PO" exactly (normalized value)
+        query = query.eq('po_type', 'Non-PO');
       } else {
         // For any other value from dropdown, do exact match
         query = query.eq('po_type', filters.poType);
@@ -256,13 +254,12 @@ export function Invoices() {
       if (filters.paymentStatus) query = query.eq('payment_status', filters.paymentStatus);
       if (filters.processState) query = query.eq('overall_process_state', filters.processState);
       
-      // Handle PO type filter - dashboard sends normalized values "PO" or "Non-PO"
+      // Handle PO type filter - data is normalized to "PO" or "Non-PO"
       if (filters.poType) {
-        if (filters.poType.toUpperCase() === 'PO') {
-          query = query.ilike('po_type', 'PO');
-        } else if (filters.poType.toUpperCase() === 'NON-PO' || filters.poType.toUpperCase() === 'NONPO') {
-          // Match anything that's NOT "PO" (case-insensitive) - includes null, empty, "Non-PO", etc.
-          query = query.not('po_type', 'ilike', 'PO');
+        if (filters.poType.toUpperCase() === 'PO' || filters.poType.toUpperCase() === 'YES') {
+          query = query.eq('po_type', 'PO');
+        } else if (filters.poType.toUpperCase() === 'NON-PO' || filters.poType.toUpperCase() === 'NONPO' || filters.poType.toUpperCase() === 'NO') {
+          query = query.eq('po_type', 'Non-PO');
         } else {
           query = query.eq('po_type', filters.poType);
         }
@@ -427,6 +424,7 @@ export function Invoices() {
               <tr>
                 <SortableHeader field="invoice_number" label="Invoice" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                 <SortableHeader field="supplier" label="Vendor" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+                <SortableHeader field="identifying_po" label="PO Number" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                 <SortableHeader field="invoice_amount" label="Amount" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                 <SortableHeader field="days_old" label="Days Old" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                 <SortableHeader field="approval_status" label="Approval" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
@@ -438,13 +436,14 @@ export function Invoices() {
             </thead>
             <tbody className="divide-y divide-slate-700/50">
               {loading ? (
-                <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-400"><div className="flex items-center justify-center gap-2"><div className="w-5 h-5 border-2 border-sky-500 border-t-transparent rounded-full animate-spin"></div>Loading...</div></td></tr>
+                <tr><td colSpan={10} className="px-4 py-8 text-center text-slate-400"><div className="flex items-center justify-center gap-2"><div className="w-5 h-5 border-2 border-sky-500 border-t-transparent rounded-full animate-spin"></div>Loading...</div></td></tr>
               ) : invoices.length === 0 ? (
-                <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-400">No invoices found matching your filters</td></tr>
+                <tr><td colSpan={10} className="px-4 py-8 text-center text-slate-400">No invoices found matching your filters</td></tr>
               ) : invoices.map((invoice) => (
                 <tr key={invoice.id} onClick={() => setSelectedInvoice(invoice)} className="hover:bg-slate-800/30 cursor-pointer transition-colors">
                   <td className="px-4 py-3"><p className="text-sm font-medium text-white">{invoice.invoice_number || '-'}</p><p className="text-xs text-slate-500">{formatDate(invoice.invoice_date)}</p></td>
                   <td className="px-4 py-3"><p className="text-sm text-slate-300 max-w-[180px] truncate">{invoice.supplier || '-'}</p></td>
+                  <td className="px-4 py-3"><p className="text-xs text-slate-400">{invoice.identifying_po || '-'}</p></td>
                   <td className="px-4 py-3"><p className="text-sm font-medium text-white">{formatCurrency(invoice.invoice_amount || 0)}</p></td>
                   <td className="px-4 py-3"><span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${(invoice.days_old || 0) > 270 ? 'bg-red-500/20 text-red-400' : (invoice.days_old || 0) > 180 ? 'bg-amber-500/20 text-amber-400' : (invoice.days_old || 0) > 90 ? 'bg-sky-500/20 text-sky-400' : 'bg-emerald-500/20 text-emerald-400'}`}>{invoice.days_old || 0}</span></td>
                   <td className="px-4 py-3"><p className="text-xs text-slate-400">{invoice.approval_status || '-'}</p></td>
@@ -549,7 +548,7 @@ function DetailField({ label, value }: { label: string; value: string | null | u
   );
 }
 
-type SortField = 'invoice_number' | 'supplier' | 'invoice_amount' | 'days_old' | 'approval_status' | 'approver_id' | 'validation_status' | 'payment_status' | 'overall_process_state';
+type SortField = 'invoice_number' | 'supplier' | 'invoice_amount' | 'days_old' | 'approval_status' | 'approver_id' | 'validation_status' | 'payment_status' | 'overall_process_state' | 'identifying_po';
 
 function SortableHeader({ 
   field, 

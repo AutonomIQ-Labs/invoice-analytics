@@ -74,6 +74,18 @@ function isFullyPaidInvoice(invoiceStatus: string): boolean {
   return status === 'paid' || status === 'fully paid';
 }
 
+// Normalize PO type from various formats to "PO" or "Non-PO"
+function normalizePoType(rawValue: string): string {
+  if (!rawValue) return 'Non-PO';
+  const value = rawValue.trim().toLowerCase();
+  // CSV uses "Yes" for PO and "No" for Non-PO
+  if (value === 'yes' || value === 'po') {
+    return 'PO';
+  }
+  // Everything else is Non-PO
+  return 'Non-PO';
+}
+
 // Calculate days old from invoice date vs current date
 function calculateDaysOld(invoiceDateStr: string | null): number | null {
   if (!invoiceDateStr) return null;
@@ -233,7 +245,8 @@ function mapRowToInvoice(row: CsvRow, batchId: string): MapRowResult {
       invoice_type: getField(row, 'INVOICE_TYPE', 'Invoice Type Name', 'Invoice Type'),
       custom_invoice_status: getField(row, 'Custom Invoice Status') || null,
       overall_process_state: overallProcessState,
-      po_type: getField(row, 'PO_NONPO', 'PO/Non-PO', 'PO Type'),
+      // PO_NONPO field uses "Yes" for PO and "No" for Non-PO - normalize to "PO" or "Non-PO"
+      po_type: normalizePoType(getField(row, 'PO_NONPO', 'PO/Non-PO', 'PO Type')),
       identifying_po: getField(row, 'PO_NUMBER', 'Identifying PO', 'PO Number'),
       import_batch_id: batchId,
       // New fields from AP Invoice Aging Report
