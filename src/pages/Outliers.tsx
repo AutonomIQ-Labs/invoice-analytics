@@ -103,11 +103,11 @@ export function Outliers() {
       // Calculate stats
       const highValueCount = outlierData.filter(o => o.outlier_reason === 'high_value').length;
       const negativeCount = outlierData.filter(o => o.outlier_reason === 'negative').length;
-      // Treat null/undefined as "included" (consistent with Aging & Invoices pages)
-      const includedCount = outlierData.filter(o => o.include_in_analysis === true || o.include_in_analysis === null || o.include_in_analysis === undefined).length;
-      const excludedCount = outlierData.filter(o => o.include_in_analysis === false).length;
+      // Outliers are excluded by default - only included if explicitly set to true
+      const includedCount = outlierData.filter(o => o.include_in_analysis === true).length;
+      const excludedCount = outlierData.filter(o => o.include_in_analysis !== true).length;
       const totalValue = outlierData.reduce((sum, o) => sum + Math.abs(o.invoice_amount || 0), 0);
-      const includedValue = outlierData.filter(o => o.include_in_analysis === true || o.include_in_analysis === null || o.include_in_analysis === undefined).reduce((sum, o) => sum + Math.abs(o.invoice_amount || 0), 0);
+      const includedValue = outlierData.filter(o => o.include_in_analysis === true).reduce((sum, o) => sum + Math.abs(o.invoice_amount || 0), 0);
 
       setStats({
         totalOutliers: outlierData.length,
@@ -280,8 +280,8 @@ export function Outliers() {
   const filteredOutliers = outliers.filter(o => {
     // Type filter
     if (filter !== 'all' && o.outlier_reason !== filter) return false;
-    // Inclusion status filter - treat null/undefined as "included" (consistent with Aging & Invoices pages)
-    const isIncluded = o.include_in_analysis === true || o.include_in_analysis === null || o.include_in_analysis === undefined;
+    // Inclusion status filter - outliers are excluded by default (only included if explicitly true)
+    const isIncluded = o.include_in_analysis === true;
     if (showIncluded === 'included' && !isIncluded) return false;
     if (showIncluded === 'excluded' && isIncluded) return false;
     // Search term (vendor, invoice number, invoice ID)
@@ -374,7 +374,7 @@ export function Outliers() {
         invoice.invoice_amount?.toString() || '0',
         invoice.days_old?.toString() || '0',
         invoice.outlier_reason === 'high_value' ? 'High Value' : 'Negative',
-        invoice.include_in_analysis === false ? 'No' : 'Yes',
+        invoice.include_in_analysis === true ? 'Yes' : 'No',
         invoice.invoice_date || '',
         invoice.overall_process_state || '',
         invoice.approval_response || '',
@@ -452,7 +452,7 @@ export function Outliers() {
       // Build table rows - escape all database values to prevent XSS
       const rows = dataToprint.map(inv => `
         <tr>
-          <td>${inv.include_in_analysis === false ? '<span style="color: #ef4444;">Excluded</span>' : '<span style="color: #10b981;">Included</span>'}</td>
+          <td>${inv.include_in_analysis === true ? '<span style="color: #10b981;">Included</span>' : '<span style="color: #ef4444;">Excluded</span>'}</td>
           <td>${inv.outlier_reason === 'high_value' ? 'High Value' : 'Negative'}</td>
           <td>${escapeHtml(inv.invoice_number || inv.invoice_id) || '-'}</td>
           <td>${escapeHtml(inv.supplier) || '-'}</td>
@@ -464,9 +464,9 @@ export function Outliers() {
 
       // Calculate summary
       const totalValue = dataToprint.reduce((sum, inv) => sum + Math.abs(inv.invoice_amount || 0), 0);
-      // Treat null/undefined as "included" (consistent with Aging & Invoices pages)
-      const includedCount = dataToprint.filter(inv => inv.include_in_analysis === true || inv.include_in_analysis === null || inv.include_in_analysis === undefined).length;
-      const excludedCount = dataToprint.filter(inv => inv.include_in_analysis === false).length;
+      // Outliers are excluded by default - only included if explicitly set to true
+      const includedCount = dataToprint.filter(inv => inv.include_in_analysis === true).length;
+      const excludedCount = dataToprint.filter(inv => inv.include_in_analysis !== true).length;
       const highValueCount = dataToprint.filter(inv => inv.outlier_reason === 'high_value').length;
       const negativeCount = dataToprint.filter(inv => inv.outlier_reason === 'negative').length;
 
@@ -1026,18 +1026,18 @@ export function Outliers() {
               </thead>
               <tbody className="divide-y divide-slate-700/50">
                 {filteredOutliers.map(invoice => (
-                  <tr key={invoice.id} className={`hover:bg-slate-800/30 ${invoice.include_in_analysis === false ? 'opacity-60' : ''}`}>
+                  <tr key={invoice.id} className={`hover:bg-slate-800/30 ${invoice.include_in_analysis !== true ? 'opacity-60' : ''}`}>
                     <td className="px-4 py-3">
                       <button
                         onClick={() => toggleInclusion(invoice)}
                         disabled={updating === invoice.id}
                         className={`w-10 h-6 rounded-full transition-colors relative ${
-                          invoice.include_in_analysis === false ? 'bg-slate-600' : 'bg-emerald-500'
+                          invoice.include_in_analysis === true ? 'bg-emerald-500' : 'bg-slate-600'
                         } ${updating === invoice.id ? 'opacity-50' : ''}`}
                       >
                         <span
                           className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
-                            invoice.include_in_analysis === false ? 'left-1' : 'left-5'
+                            invoice.include_in_analysis === true ? 'left-5' : 'left-1'
                           }`}
                         />
                         {updating === invoice.id && (

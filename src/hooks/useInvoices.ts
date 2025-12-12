@@ -112,9 +112,13 @@ export function useInvoices(options: UseInvoicesOptions = {}) {
       query = query.eq('import_batch_id', targetBatchId);
 
       // Filter outliers based on include_in_analysis unless explicitly including all
+      // Outliers are excluded by default (only included if explicitly true)
+      // Non-outliers are included by default (excluded only if explicitly false)
       if (includeOutliers === undefined) {
-        // Default behavior: respect include_in_analysis field (include those with true or null/undefined)
-        query = query.or('include_in_analysis.is.null,include_in_analysis.eq.true');
+        // Default behavior: 
+        // - Non-outliers: include if include_in_analysis is true, null, or undefined
+        // - Outliers: only include if include_in_analysis is explicitly true
+        query = query.or('is_outlier.is.null,is_outlier.eq.false,include_in_analysis.eq.true');
       } else if (includeOutliers === false) {
         // Explicitly exclude ALL outliers - only show non-outlier invoices
         query = query.or('is_outlier.is.null,is_outlier.eq.false');
@@ -315,9 +319,16 @@ export function useDashboardStats() {
         allInvoicesWithOutliers.push(...pageData);
         
         // Filter to only include invoices marked for analysis
-        const includedInvoices = pageData.filter(inv => 
-          inv.include_in_analysis === true || inv.include_in_analysis === null || inv.include_in_analysis === undefined
-        );
+        // For outliers: only include if explicitly set to true (excluded by default)
+        // For non-outliers: include if true, null, or undefined (included by default)
+        const includedInvoices = pageData.filter(inv => {
+          if (inv.is_outlier === true) {
+            // Outliers are excluded by default, only include if explicitly true
+            return inv.include_in_analysis === true;
+          }
+          // Non-outliers are included by default
+          return inv.include_in_analysis === true || inv.include_in_analysis === null || inv.include_in_analysis === undefined;
+        });
         allInvoices.push(...includedInvoices);
 
         hasMore = pageData.length === pageSize;
@@ -329,12 +340,12 @@ export function useDashboardStats() {
       
       // Calculate outlier stats from all invoices (also with dynamic days_old)
       const outlierInvoices = allInvoicesWithOutliers.filter(inv => inv.is_outlier === true);
-      // Included: explicitly true OR null/undefined (default behavior includes them)
-      const includedOutliers = outlierInvoices.filter(inv => 
-        inv.include_in_analysis === true || inv.include_in_analysis === null || inv.include_in_analysis === undefined
+      // Included: only if explicitly set to true (outliers are excluded by default)
+      const includedOutliers = outlierInvoices.filter(inv => inv.include_in_analysis === true);
+      // Excluded: false, null, or undefined (default behavior excludes them)
+      const excludedOutliers = outlierInvoices.filter(inv => 
+        inv.include_in_analysis === false || inv.include_in_analysis === null || inv.include_in_analysis === undefined
       );
-      // Excluded: explicitly false
-      const excludedOutliers = outlierInvoices.filter(inv => inv.include_in_analysis === false);
       const outlierStats = {
         total: outlierInvoices.length,
         included: includedOutliers.length,

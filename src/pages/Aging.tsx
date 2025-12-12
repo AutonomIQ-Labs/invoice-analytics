@@ -87,10 +87,17 @@ export function Aging() {
 
         const pageData = (data as Invoice[]) || [];
         
-        // Filter to only include invoices marked for analysis (exclude outliers that are not included)
-        const includedInvoices = pageData.filter(inv => 
-          inv.include_in_analysis === true || inv.include_in_analysis === null || inv.include_in_analysis === undefined
-        );
+        // Filter to only include invoices marked for analysis
+        // For outliers: only include if explicitly set to true (excluded by default)
+        // For non-outliers: include if true, null, or undefined (included by default)
+        const includedInvoices = pageData.filter(inv => {
+          if (inv.is_outlier === true) {
+            // Outliers are excluded by default, only include if explicitly true
+            return inv.include_in_analysis === true;
+          }
+          // Non-outliers are included by default
+          return inv.include_in_analysis === true || inv.include_in_analysis === null || inv.include_in_analysis === undefined;
+        });
         allInvoices.push(...includedInvoices);
         
         hasMore = pageData.length === pageSize;
