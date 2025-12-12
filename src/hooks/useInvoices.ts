@@ -118,7 +118,7 @@ export function useInvoices(options: UseInvoicesOptions = {}) {
         // Default behavior: 
         // - Non-outliers: include if include_in_analysis is true, null, or undefined
         // - Outliers: only include if include_in_analysis is explicitly true
-        query = query.or('is_outlier.is.null,is_outlier.eq.false,include_in_analysis.eq.true');
+        query = query.or('and(or(is_outlier.is.null,is_outlier.eq.false),or(include_in_analysis.is.null,include_in_analysis.eq.true)),and(is_outlier.eq.true,include_in_analysis.eq.true)');
       } else if (includeOutliers === false) {
         // Explicitly exclude ALL outliers - only show non-outlier invoices
         query = query.or('is_outlier.is.null,is_outlier.eq.false');
@@ -525,7 +525,8 @@ export function useDashboardStats() {
 }
 
 // Hook for getting batch comparison data
-export function useBatchComparison() {
+export function useBatchComparison(options: { includeOutliers?: boolean } = {}) {
+  const { includeOutliers } = options;
   const [comparison, setComparison] = useState<{
     currentBatch: ImportBatch | null;
     previousBatch: ImportBatch | null;
@@ -581,12 +582,22 @@ export function useBatchComparison() {
       while (hasMoreCurrent) {
         const from = currentPage * pageSize;
         const to = from + pageSize - 1;
-        const { data: currentInvoices } = await supabase
+        let currentQuery = supabase
           .from('invoices')
           .select('*')
-          .eq('import_batch_id', currentBatch.id)
-          .or('include_in_analysis.is.null,include_in_analysis.eq.true')
-          .range(from, to);
+          .eq('import_batch_id', currentBatch.id);
+        
+        // Apply outlier filtering based on includeOutliers parameter
+        if (includeOutliers === undefined) {
+          // Default behavior: exclude outliers unless explicitly included
+          currentQuery = currentQuery.or('and(or(is_outlier.is.null,is_outlier.eq.false),or(include_in_analysis.is.null,include_in_analysis.eq.true)),and(is_outlier.eq.true,include_in_analysis.eq.true)');
+        } else if (includeOutliers === false) {
+          // Exclude ALL outliers - only show non-outlier invoices
+          currentQuery = currentQuery.or('is_outlier.is.null,is_outlier.eq.false');
+        }
+        // If includeOutliers is true, don't filter - show all invoices (matches useInvoices behavior)
+        
+        const { data: currentInvoices } = await currentQuery.range(from, to);
         
         if (currentInvoices && currentInvoices.length > 0) {
           current.push(...(currentInvoices as Invoice[]));
@@ -606,12 +617,21 @@ export function useBatchComparison() {
         while (hasMorePrev) {
           const from = prevPage * pageSize;
           const to = from + pageSize - 1;
-          const { data: prevInvoices } = await supabase
+          let prevQuery = supabase
             .from('invoices')
             .select('*')
-            .eq('import_batch_id', previousBatch.id)
-            .or('include_in_analysis.is.null,include_in_analysis.eq.true')
-            .range(from, to);
+            .eq('import_batch_id', previousBatch.id);
+          
+          // Apply same outlier filtering as current batch for fair comparison
+          if (includeOutliers === undefined) {
+            prevQuery = prevQuery.or('and(or(is_outlier.is.null,is_outlier.eq.false),or(include_in_analysis.is.null,include_in_analysis.eq.true)),and(is_outlier.eq.true,include_in_analysis.eq.true)');
+          } else if (includeOutliers === false) {
+            // Exclude ALL outliers - only show non-outlier invoices
+            prevQuery = prevQuery.or('is_outlier.is.null,is_outlier.eq.false');
+          }
+          // If includeOutliers is true, don't filter - show all invoices (matches useInvoices behavior)
+          
+          const { data: prevInvoices } = await prevQuery.range(from, to);
           
           if (prevInvoices && prevInvoices.length > 0) {
             previous.push(...(prevInvoices as Invoice[]));
@@ -677,7 +697,7 @@ export function useBatchComparison() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [includeOutliers]);
 
   useEffect(() => {
     fetchComparison();
