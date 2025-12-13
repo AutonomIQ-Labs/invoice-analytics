@@ -119,11 +119,11 @@ export function BatchComparisonPanel() {
 
       {/* Totals comparison */}
       <div className="mt-4 pt-4 border-t border-slate-700/50">
-        <div className="flex items-center justify-between text-sm">
+        <div className="flex items-center justify-end gap-3 text-sm">
           <span className="text-slate-400">Previous Import</span>
           <span className="text-slate-300">{comparison.previousCount.toLocaleString()} invoices · {formatCurrency(comparison.previousValue)}</span>
         </div>
-        <div className="flex items-center justify-between text-sm mt-1">
+        <div className="flex items-center justify-end gap-3 text-sm mt-1">
           <span className="text-slate-400">Current Import</span>
           <span className="text-white font-medium">{comparison.currentCount.toLocaleString()} invoices · {formatCurrency(comparison.currentValue)}</span>
         </div>
