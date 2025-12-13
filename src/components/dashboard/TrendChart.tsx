@@ -188,6 +188,8 @@ export function TrendChart({ batches }: TrendChartProps) {
                 name === 'backlog' ? 'Backlog' : name
               ]}
               labelFormatter={(label) => `Date: ${label}`}
+              cursor={{ stroke: '#475569', strokeWidth: 1 }}
+              isAnimationActive={false}
             />
             <Line type="monotone" dataKey="backlog" stroke="#f97316" strokeWidth={2} dot={{ fill: '#f97316', strokeWidth: 2, r: 4 }} activeDot={{ r: 6, fill: '#f97316' }} />
           </LineChart>
