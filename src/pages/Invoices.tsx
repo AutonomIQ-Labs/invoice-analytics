@@ -113,23 +113,41 @@ export function Invoices() {
     };
   }, []);
 
-  // Load filter options from current batch
+  // Load filter options from current batch (with pagination to handle >1000 invoices)
   useEffect(() => {
     async function loadFilterOptions() {
       if (!currentBatchId) return;
       
-      const { data } = await supabase
-        .from('invoices')
-        .select('overall_process_state, po_type, supplier_type, payment_method')
-        .eq('import_batch_id', currentBatchId);
+      // Fetch ALL invoices using pagination (Supabase has 1000 row limit)
+      const allData: { overall_process_state: string | null; po_type: string | null; supplier_type: string | null; payment_method: string | null }[] = [];
+      const pageSize = 1000;
+      let page = 0;
+      let hasMore = true;
+
+      while (hasMore) {
+        const from = page * pageSize;
+        const to = from + pageSize - 1;
+
+        const { data, error } = await supabase
+          .from('invoices')
+          .select('overall_process_state, po_type, supplier_type, payment_method')
+          .eq('import_batch_id', currentBatchId)
+          .range(from, to);
+        
+        if (error || !data) break;
+        
+        allData.push(...data);
+        hasMore = data.length === pageSize;
+        page++;
+      }
       
-      if (data) {
+      if (allData.length > 0) {
         const unique = (arr: (string | null)[]) => [...new Set(arr.filter(Boolean))].sort() as string[];
         setFilterOptions({
-          processStates: unique(data.map(d => d.overall_process_state)),
-          poTypes: unique(data.map(d => d.po_type)),
-          supplierTypes: unique(data.map(d => d.supplier_type)),
-          paymentMethods: unique(data.map(d => d.payment_method)),
+          processStates: unique(allData.map(d => d.overall_process_state)),
+          poTypes: unique(allData.map(d => d.po_type)),
+          supplierTypes: unique(allData.map(d => d.supplier_type)),
+          paymentMethods: unique(allData.map(d => d.payment_method)),
         });
       }
     }
