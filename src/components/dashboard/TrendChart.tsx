@@ -18,9 +18,10 @@ interface BatchBacklogData {
 const formatDate = (dateStr: string) => new Date(dateStr).toLocaleDateString('en-CA', { month: 'short', day: 'numeric' });
 
 // Check if invoice status is "Ready For Payment" (process state 08)
-function isReadyForPayment(processState: string): boolean {
-  const state = processState.trim().toLowerCase();
-  return state.startsWith('08') || state.includes('ready for payment');
+// Must match exactly the logic in useDashboardStats for consistency
+function isReadyForPayment(processState: string | null | undefined): boolean {
+  const state = processState?.trim() || '';
+  return state.startsWith('08') || state.toLowerCase().includes('ready for payment');
 }
 
 export function TrendChart({ batches }: TrendChartProps) {
@@ -98,7 +99,7 @@ export function TrendChart({ batches }: TrendChartProps) {
 
         const total = includedInvoices.length;
         const readyForPayment = includedInvoices.filter(inv => 
-          inv.overall_process_state && isReadyForPayment(inv.overall_process_state)
+          isReadyForPayment(inv.overall_process_state)
         ).length;
         
         backlogData.push({
