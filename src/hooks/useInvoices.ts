@@ -426,9 +426,9 @@ export function useDashboardStats() {
         .map(([state, data]) => ({ state, ...data }))
         .sort((a, b) => getStateOrder(a.state) - getStateOrder(b.state));
 
-      // Top vendors
+      // Top vendors (uses backlog invoices only - excludes Ready for Payment)
       const vendorMap = new Map<string, { count: number; value: number }>();
-      invoices.forEach(inv => {
+      backlogInvoices.forEach(inv => {
         const supplier = inv.supplier || 'Unknown';
         const existing = vendorMap.get(supplier) || { count: 0, value: 0 };
         vendorMap.set(supplier, {
@@ -442,8 +442,9 @@ export function useDashboardStats() {
         .slice(0, 10);
 
       // PO vs Non-PO breakdown - normalized to only PO and Non-PO categories
+      // Uses backlog invoices only - excludes Ready for Payment
       const poMap = new Map<string, { count: number; value: number }>();
-      invoices.forEach(inv => {
+      backlogInvoices.forEach(inv => {
         // Normalize PO type - CSV uses "Yes" for PO and "No" for Non-PO
         let poType: string;
         const rawPoType = (inv.po_type || '').trim().toUpperCase();
