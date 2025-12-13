@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 interface AgingData {
@@ -8,7 +9,6 @@ interface AgingData {
 
 interface AgingChartProps {
   data: AgingData[];
-  viewMode: 'count' | 'value';
 }
 
 const COLORS = ['#0ea5e9', '#f59e0b', '#ef4444', '#dc2626'];
@@ -17,23 +17,44 @@ const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD', notation: 'compact', maximumFractionDigits: 1 }).format(value);
 };
 
-export function AgingChart({ data, viewMode }: AgingChartProps) {
+export function AgingChart({ data }: AgingChartProps) {
+  const [viewMode, setViewMode] = useState<'count' | 'value'>('count');
   const chartData = data.map((item, index) => ({ ...item, fill: COLORS[index % COLORS.length] }));
 
   if (!data || data.length === 0) {
     return (
       <div className="card p-6">
         <h3 className="text-lg font-semibold text-white mb-4">Aging Breakdown</h3>
-        <div className="h-72 flex items-center justify-center text-slate-500">No data available</div>
+        <div className="h-64 flex items-center justify-center text-slate-500">No data available</div>
       </div>
     );
   }
 
   return (
     <div className="card p-6">
-      <h3 className="text-lg font-semibold text-white mb-4">Aging Breakdown</h3>
-      <div className="h-72">
-        <ResponsiveContainer width="100%" height={288}>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold text-white">Aging Breakdown</h3>
+        <div className="flex gap-1 bg-slate-700/50 rounded-lg p-1">
+          <button
+            onClick={() => setViewMode('count')}
+            className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
+              viewMode === 'count' ? 'bg-sky-500 text-white' : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            Count
+          </button>
+          <button
+            onClick={() => setViewMode('value')}
+            className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
+              viewMode === 'value' ? 'bg-sky-500 text-white' : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            Value
+          </button>
+        </div>
+      </div>
+      <div className="h-64">
+        <ResponsiveContainer width="100%" height={256}>
           <BarChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 20 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
             <XAxis dataKey="bucket" stroke="#94a3b8" tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={{ stroke: '#475569' }} />

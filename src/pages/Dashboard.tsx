@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDashboardStats, useImportBatches } from '../hooks/useInvoices';
 import { StatCard } from '../components/dashboard/StatCard';
@@ -17,7 +16,6 @@ export function Dashboard() {
   const navigate = useNavigate();
   const { stats, loading: statsLoading, currentBatch } = useDashboardStats();
   const { batches } = useImportBatches();
-  const [agingViewMode, setAgingViewMode] = useState<'count' | 'value'>('count');
 
   const handleStateClick = (state: string) => navigate(`/invoices?state=${encodeURIComponent(state)}`);
   const handleVendorClick = (vendor: string) => navigate(`/invoices?vendor=${encodeURIComponent(vendor)}`);
@@ -106,16 +104,7 @@ export function Dashboard() {
           <BatchComparisonPanel />
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <span></span>
-                <div className="flex gap-1 bg-slate-700/50 rounded-lg p-1">
-                  <button onClick={() => setAgingViewMode('count')} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${agingViewMode === 'count' ? 'bg-sky-500 text-white' : 'text-slate-400 hover:text-white'}`}>Count</button>
-                  <button onClick={() => setAgingViewMode('value')} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${agingViewMode === 'value' ? 'bg-sky-500 text-white' : 'text-slate-400 hover:text-white'}`}>Value</button>
-                </div>
-              </div>
-              <AgingChart data={stats.agingBreakdown} viewMode={agingViewMode} />
-            </div>
+            <AgingChart data={stats.agingBreakdown} />
             <ProcessStateChart data={stats.processStateBreakdown} onStateClick={handleStateClick} />
           </div>
 
