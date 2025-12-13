@@ -10,9 +10,16 @@ const formatCurrency = (value: number) => new Intl.NumberFormat('en-CA', {
 const formatDate = (dateStr: string) => new Date(dateStr).toLocaleDateString('en-CA', {
   month: 'short',
   day: 'numeric',
-  hour: '2-digit',
+  hour: 'numeric',
   minute: '2-digit'
 });
+
+const formatTimeDiff = (date1: string, date2: string) => {
+  const diff = Math.abs(new Date(date1).getTime() - new Date(date2).getTime());
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+  return `${hours}h ${minutes}m`;
+};
 
 export function BatchComparisonPanel() {
   const { comparison, loading } = useBatchComparison();
@@ -46,74 +53,101 @@ export function BatchComparisonPanel() {
   const netValueChange = comparison.currentValue - comparison.previousValue;
 
   return (
-    <div className="card p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold text-white">Changes Since Last Import</h3>
-        <p className="text-xs text-slate-500">
-          {formatDate(comparison.currentBatch!.imported_at)} vs {formatDate(comparison.previousBatch.imported_at)}
-        </p>
+    <div className="card p-5">
+      {/* Header */}
+      <div className="flex items-start justify-between mb-4">
+        <div>
+          <h3 className="text-xl font-bold text-white">Changes Since Last Import</h3>
+          <p className="text-sm text-slate-400">
+            Comparing {formatDate(comparison.currentBatch!.imported_at)} vs {formatDate(comparison.previousBatch.imported_at)}
+          </p>
+        </div>
+        <div className="text-right">
+          <p className="text-xs text-slate-500 uppercase tracking-wide">Total Current Value</p>
+          <p className="text-2xl font-bold text-white">
+            {formatCurrency(comparison.currentValue)}
+            <span className={`text-sm ml-1 ${netValueChange >= 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+              ({netValueChange >= 0 ? '+' : ''}{formatCurrency(netValueChange)})
+            </span>
+          </p>
+        </div>
       </div>
 
-      {/* Compact Stats Row */}
-      <div className="flex flex-wrap items-center gap-4 mb-3 text-sm">
-        <div className="flex items-center gap-2">
-          <span className="text-slate-400">Net:</span>
-          <span className={`font-bold ${netChange >= 0 ? 'text-red-400' : 'text-emerald-400'}`}>
-            {netChange >= 0 ? '+' : ''}{netChange}
-          </span>
+      {/* Stats Row */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+        <div className="bg-slate-800/60 border border-slate-700/50 rounded-lg p-3">
+          <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Net Items</p>
+          <p className={`text-2xl font-bold ${netChange <= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+            {netChange > 0 ? '+' : ''}{netChange}
+          </p>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-slate-400">Resolved:</span>
-          <span className="font-bold text-emerald-400">-{comparison.resolvedInvoicesCount}</span>
-          <span className="text-emerald-400/70">({formatCurrency(comparison.resolvedInvoicesValue)})</span>
+        <div className="bg-slate-800/60 border border-slate-700/50 rounded-lg p-3">
+          <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Resolved</p>
+          <p className="text-2xl font-bold text-emerald-400">
+            -{comparison.resolvedInvoicesCount}
+            <span className="text-sm text-slate-400 font-normal ml-2">({formatCurrency(comparison.resolvedInvoicesValue)})</span>
+          </p>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-slate-400">New:</span>
-          <span className="font-bold text-amber-400">+{comparison.newInvoicesCount}</span>
-          <span className="text-amber-400/70">({formatCurrency(comparison.newInvoicesValue)})</span>
+        <div className="bg-slate-800/60 border border-slate-700/50 rounded-lg p-3">
+          <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">New Items</p>
+          <p className="text-2xl font-bold text-amber-400">
+            +{comparison.newInvoicesCount}
+            <span className="text-sm text-slate-400 font-normal ml-2">({formatCurrency(comparison.newInvoicesValue)})</span>
+          </p>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-slate-400">Value Δ:</span>
-          <span className={`font-bold ${netValueChange >= 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+        <div className="bg-slate-800/60 border border-slate-700/50 rounded-lg p-3">
+          <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Value Delta</p>
+          <p className={`text-2xl font-bold ${netValueChange >= 0 ? 'text-red-400' : 'text-emerald-400'}`}>
             {netValueChange >= 0 ? '+' : ''}{formatCurrency(netValueChange)}
-          </span>
+            <span className="text-slate-500 ml-1">$</span>
+          </p>
         </div>
       </div>
 
-      {/* Status Changes & Totals side by side */}
-      <div className="flex flex-wrap gap-4">
-        {/* Status Changes */}
-        <div className="flex-1 min-w-[280px]">
-          <h4 className="text-xs font-medium text-slate-500 mb-2">Status Changes</h4>
-          <div className="space-y-1">
-            {comparison.stateChanges.filter(s => s.change !== 0).map((change) => (
-              <div key={change.state} className="flex items-center justify-between gap-3 text-xs">
-                <span className="text-slate-300">{change.state}</span>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <span className="text-slate-500">{change.previous.toLocaleString()} → {change.current.toLocaleString()}</span>
-                  <span className={`font-semibold min-w-[40px] text-right ${
-                    change.change > 0 ? 'text-red-400' : change.change < 0 ? 'text-emerald-400' : 'text-slate-400'
-                  }`}>
-                    {change.change > 0 ? '+' : ''}{change.change}
-                  </span>
-                </div>
-              </div>
-            ))}
-            {comparison.stateChanges.filter(s => s.change !== 0).length === 0 && (
-              <p className="text-slate-500 text-xs">No status changes</p>
-            )}
-          </div>
+      {/* Status Changes Breakdown Table */}
+      <div className="mb-4">
+        <h4 className="text-sm font-semibold text-white uppercase tracking-wide mb-3">Status Changes Breakdown</h4>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-slate-700/50">
+                <th className="text-left text-xs text-slate-500 uppercase tracking-wide py-2 pr-4">Status</th>
+                <th className="text-right text-xs text-slate-500 uppercase tracking-wide py-2 px-4">Previous</th>
+                <th className="text-right text-xs text-slate-500 uppercase tracking-wide py-2 px-4">Current</th>
+                <th className="text-right text-xs text-slate-500 uppercase tracking-wide py-2 pl-4">Change</th>
+              </tr>
+            </thead>
+            <tbody>
+              {comparison.stateChanges.filter(s => s.change !== 0).map((change) => (
+                <tr key={change.state} className="border-b border-slate-800/50">
+                  <td className="py-3 pr-4 text-sm text-white">{change.state}</td>
+                  <td className="py-3 px-4 text-sm text-slate-400 text-right">{change.previous.toLocaleString()}</td>
+                  <td className="py-3 px-4 text-sm text-white font-medium text-right">{change.current.toLocaleString()}</td>
+                  <td className="py-3 pl-4 text-right">
+                    <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${
+                      change.change < 0 
+                        ? 'bg-emerald-500/20 text-emerald-400' 
+                        : 'bg-red-500/20 text-red-400'
+                    }`}>
+                      {change.change > 0 ? '+' : ''}{change.change}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+              {comparison.stateChanges.filter(s => s.change !== 0).length === 0 && (
+                <tr>
+                  <td colSpan={4} className="py-4 text-center text-slate-500 text-sm">No status changes detected</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
+      </div>
 
-        {/* Totals */}
-        <div className="flex-shrink-0 text-right text-xs">
-          <div className="text-slate-500 mb-1">
-            Previous: <span className="text-slate-300">{comparison.previousCount.toLocaleString()} · {formatCurrency(comparison.previousValue)}</span>
-          </div>
-          <div className="text-slate-500">
-            Current: <span className="text-white font-medium">{comparison.currentCount.toLocaleString()} · {formatCurrency(comparison.currentValue)}</span>
-          </div>
-        </div>
+      {/* Footer */}
+      <div className="flex items-center justify-between pt-3 border-t border-slate-700/50 text-sm text-slate-400">
+        <span>Total Processed Items: <span className="text-white">{comparison.currentCount.toLocaleString()}</span></span>
+        <span>Comparison Period: <span className="text-white">{formatTimeDiff(comparison.currentBatch!.imported_at, comparison.previousBatch.imported_at)}</span></span>
       </div>
     </div>
   );

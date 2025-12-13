@@ -101,12 +101,9 @@ export function Dashboard() {
             <StatCard title="Average Age" value={`${Math.round(stats.averageDaysOld)} days`} subtitle="Across backlog invoices" icon="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" color="yellow" />
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <div className="lg:col-span-2">
-              <BatchComparisonPanel />
-            </div>
-            <TrendChart batches={batches} />
-          </div>
+          <BatchComparisonPanel />
+
+          <TrendChart batches={batches} />
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <AgingChart data={stats.agingBreakdown} />
