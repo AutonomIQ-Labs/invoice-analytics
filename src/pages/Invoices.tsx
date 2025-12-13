@@ -29,6 +29,7 @@ interface FilterOptions {
   poTypes: string[];
   supplierTypes: string[];
   paymentMethods: string[];
+  businessUnits: string[];
 }
 
 export function Invoices() {
@@ -42,7 +43,7 @@ export function Invoices() {
   const [showFilters, setShowFilters] = useState(true);
   const [currentBatchId, setCurrentBatchId] = useState<string | null>(null);
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({
-    processStates: [], poTypes: [], supplierTypes: [], paymentMethods: []
+    processStates: [], poTypes: [], supplierTypes: [], paymentMethods: [], businessUnits: []
   });
   const printRef = useRef<HTMLDivElement>(null);
 
@@ -71,6 +72,7 @@ export function Invoices() {
     poType: searchParams.get('poType') || '',
     supplierType: searchParams.get('supplierType') || '',
     paymentMethod: searchParams.get('paymentMethod') || '',
+    businessUnit: searchParams.get('businessUnit') || '',
     minAmount: searchParams.get('minAmount') || '',
     maxAmount: searchParams.get('maxAmount') || '',
     minDaysOld: searchParams.get('minDays') || '',
@@ -113,7 +115,7 @@ export function Invoices() {
       if (!currentBatchId) return;
       
       // Fetch ALL invoices using pagination (Supabase has 1000 row limit)
-      const allData: { overall_process_state: string | null; po_type: string | null; supplier_type: string | null; payment_method: string | null }[] = [];
+      const allData: { overall_process_state: string | null; po_type: string | null; supplier_type: string | null; payment_method: string | null; business_unit: string | null }[] = [];
       const pageSize = 1000;
       let page = 0;
       let hasMore = true;
@@ -124,7 +126,7 @@ export function Invoices() {
 
         const { data, error } = await supabase
           .from('invoices')
-          .select('overall_process_state, po_type, supplier_type, payment_method')
+          .select('overall_process_state, po_type, supplier_type, payment_method, business_unit')
           .eq('import_batch_id', currentBatchId)
           .range(from, to);
         
@@ -142,6 +144,7 @@ export function Invoices() {
           poTypes: unique(allData.map(d => d.po_type)),
           supplierTypes: unique(allData.map(d => d.supplier_type)),
           paymentMethods: unique(allData.map(d => d.payment_method)),
+          businessUnits: unique(allData.map(d => d.business_unit)),
         });
       }
     }
@@ -171,6 +174,7 @@ export function Invoices() {
     if (filters.processState) query = query.eq('overall_process_state', filters.processState);
     if (filters.supplierType) query = query.eq('supplier_type', filters.supplierType);
     if (filters.paymentMethod) query = query.eq('payment_method', filters.paymentMethod);
+    if (filters.businessUnit) query = query.eq('business_unit', filters.businessUnit);
     
     // Handle PO type filter - data is normalized to "PO" or "Non-PO"
     if (filters.poType) {
@@ -237,7 +241,7 @@ export function Invoices() {
   const clearFilters = () => {
     setFilters({
       search: '', supplier: '', invoiceNumber: '', processState: '', poType: '',
-      supplierType: '', paymentMethod: '', minAmount: '', maxAmount: '', minDaysOld: '', maxDaysOld: ''
+      supplierType: '', paymentMethod: '', businessUnit: '', minAmount: '', maxAmount: '', minDaysOld: '', maxDaysOld: ''
     });
     setPage(1);
     setSearchParams({});
@@ -269,6 +273,7 @@ export function Invoices() {
       if (filters.processState) query = query.eq('overall_process_state', filters.processState);
       if (filters.supplierType) query = query.eq('supplier_type', filters.supplierType);
       if (filters.paymentMethod) query = query.eq('payment_method', filters.paymentMethod);
+      if (filters.businessUnit) query = query.eq('business_unit', filters.businessUnit);
       
       if (filters.poType) {
         if (filters.poType.toUpperCase() === 'PO' || filters.poType.toUpperCase() === 'YES') {
@@ -560,6 +565,7 @@ export function Invoices() {
             <div><label className="block text-xs font-medium text-slate-400 mb-1">PO Type</label><select value={filters.poType} onChange={(e) => updateFilter('poType', e.target.value)} className="input text-sm"><option value="">All</option>{filterOptions.poTypes.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
             <div><label className="block text-xs font-medium text-slate-400 mb-1">Supplier Type</label><select value={filters.supplierType} onChange={(e) => updateFilter('supplierType', e.target.value)} className="input text-sm"><option value="">All</option>{filterOptions.supplierTypes.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
             <div><label className="block text-xs font-medium text-slate-400 mb-1">Payment Method</label><select value={filters.paymentMethod} onChange={(e) => updateFilter('paymentMethod', e.target.value)} className="input text-sm"><option value="">All</option>{filterOptions.paymentMethods.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+            <div><label className="block text-xs font-medium text-slate-400 mb-1">Business Unit</label><select value={filters.businessUnit} onChange={(e) => updateFilter('businessUnit', e.target.value)} className="input text-sm"><option value="">All</option>{filterOptions.businessUnits.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
             <div><label className="block text-xs font-medium text-slate-400 mb-1">Min Amount ($)</label><input type="number" value={filters.minAmount} onChange={(e) => updateFilter('minAmount', e.target.value)} placeholder="0" className="input text-sm" /></div>
             <div><label className="block text-xs font-medium text-slate-400 mb-1">Max Amount ($)</label><input type="number" value={filters.maxAmount} onChange={(e) => updateFilter('maxAmount', e.target.value)} placeholder="999999" className="input text-sm" /></div>
             <div><label className="block text-xs font-medium text-slate-400 mb-1">Min Days Old</label><input type="number" value={filters.minDaysOld} onChange={(e) => updateFilter('minDaysOld', e.target.value)} placeholder="0" className="input text-sm" /></div>
