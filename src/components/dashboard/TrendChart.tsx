@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { supabase } from '../../lib/supabase';
+import { isReadyForPayment } from '../../hooks/useInvoices';
 import type { ImportBatch } from '../../types/database';
 
 interface TrendChartProps {
@@ -16,13 +17,6 @@ interface BatchBacklogData {
 }
 
 const formatDate = (dateStr: string) => new Date(dateStr).toLocaleDateString('en-CA', { month: 'short', day: 'numeric' });
-
-// Check if invoice status is "Ready For Payment" (process state 08)
-// Must match exactly the logic in useDashboardStats for consistency
-function isReadyForPayment(processState: string | null | undefined): boolean {
-  const state = processState?.trim() || '';
-  return state.startsWith('08') || state.toLowerCase().includes('ready for payment');
-}
 
 export function TrendChart({ batches }: TrendChartProps) {
   const [chartData, setChartData] = useState<BatchBacklogData[]>([]);

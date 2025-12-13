@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import type { Invoice } from '../types/database';
-import { getMonthlyBuckets, applyDynamicDaysOldToAll } from '../hooks/useInvoices';
+import { getMonthlyBuckets, applyDynamicDaysOldToAll, isReadyForPayment } from '../hooks/useInvoices';
 import { Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend, ComposedChart, Line } from 'recharts';
 
 const formatCurrency = (value: number) => new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD', notation: 'compact', maximumFractionDigits: 1 }).format(value);
@@ -98,7 +98,11 @@ export function Aging() {
           // Non-outliers are included by default
           return inv.include_in_analysis === true || inv.include_in_analysis === null || inv.include_in_analysis === undefined;
         });
-        allInvoices.push(...includedInvoices);
+        
+        // Further filter to exclude Ready for Payment invoices (process state 08)
+        // Aging analysis should only show the backlog - invoices that still require attention
+        const backlogInvoices = includedInvoices.filter(inv => !isReadyForPayment(inv.overall_process_state));
+        allInvoices.push(...backlogInvoices);
         
         hasMore = pageData.length === pageSize;
         page++;
@@ -205,8 +209,8 @@ export function Aging() {
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white">Aging Analysis</h1>
-          <p className="text-slate-400 mt-1">Invoice aging breakdown by 30-day intervals</p>
+          <h1 className="text-2xl font-bold text-white">Aging Analysis <span className="text-base font-normal text-slate-400">(Backlog Only)</span></h1>
+          <p className="text-slate-400 mt-1">Invoice aging breakdown by 30-day intervals — excludes Ready for Payment</p>
         </div>
         <div className="flex gap-1 bg-slate-700/50 rounded-lg p-1">
           <button onClick={() => setViewMode('count')} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${viewMode === 'count' ? 'bg-sky-500 text-white' : 'text-slate-400 hover:text-white'}`}>Count</button>

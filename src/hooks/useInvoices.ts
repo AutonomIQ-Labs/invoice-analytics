@@ -361,14 +361,16 @@ export function useDashboardStats() {
       const totalValue = invoices.reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0);
       
       // Ready for Payment: INVOICE_PROCESS_STATUS = "08 - Ready for Payment"
-      const readyForPaymentInvoices = invoices.filter(inv => {
-        const state = inv.overall_process_state?.trim() || '';
-        return state.startsWith('08') || state.toLowerCase().includes('ready for payment');
-      });
+      const readyForPaymentInvoices = invoices.filter(inv => isReadyForPayment(inv.overall_process_state));
       const readyForPayment = {
         count: readyForPaymentInvoices.length,
         value: readyForPaymentInvoices.reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0),
       };
+      
+      // Backlog invoices: all invoices that are NOT ready for payment
+      // This is used for aging calculations since "Ready for Payment" invoices
+      // are no longer part of the active backlog that requires attention
+      const backlogInvoices = invoices.filter(inv => !isReadyForPayment(inv.overall_process_state));
 
       // Investigation invoices - based on process state containing "Investigation"
       // Note: The new CSV format (Output1.csv) only has INVOICE_PROCESS_STATUS field.
@@ -382,11 +384,14 @@ export function useDashboardStats() {
         value: investigationInvoices.reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0),
       };
 
-      const averageDaysOld = invoices.reduce((sum, inv) => sum + (inv.days_old || 0), 0) / totalInvoices || 0;
+      // Average age is calculated on backlog invoices only (excludes Ready for Payment)
+      const averageDaysOld = backlogInvoices.length > 0 
+        ? backlogInvoices.reduce((sum, inv) => sum + (inv.days_old || 0), 0) / backlogInvoices.length 
+        : 0;
 
-      // Aging breakdown - unified buckets
+      // Aging breakdown - unified buckets (uses backlog invoices only)
       const agingMap = new Map<string, { count: number; value: number }>();
-      invoices.forEach(inv => {
+      backlogInvoices.forEach(inv => {
         const bucket = getAgingBucket(inv.days_old || 0);
         const existing = agingMap.get(bucket) || { count: 0, value: 0 };
         agingMap.set(bucket, {
@@ -462,11 +467,11 @@ export function useDashboardStats() {
         .map(([type, data]) => ({ type, ...data }))
         .sort((a, b) => poOrder.indexOf(a.type) - poOrder.indexOf(b.type));
 
-      // Monthly aging breakdown - all buckets
+      // Monthly aging breakdown - all buckets (uses backlog invoices only)
       const monthlyBuckets = getMonthlyBuckets();
 
       const monthlyAgingBreakdown = monthlyBuckets.map(({ min, max, bucket, label }) => {
-        const filtered = invoices.filter(inv => {
+        const filtered = backlogInvoices.filter(inv => {
           const days = inv.days_old || 0;
           return days >= min && days < max;
         });
@@ -746,6 +751,13 @@ function getMonthlyBuckets() {
     { min: 330, max: 360, bucket: '330-360', label: '330-360 days' },
     { min: 360, max: Infinity, bucket: '360+', label: '360+ days' },
   ];
+}
+
+// Check if invoice status is "Ready For Payment" (process state 08)
+// This is the single source of truth for this check - used across dashboard, aging, and trends
+export function isReadyForPayment(processState: string | null | undefined): boolean {
+  const state = processState?.trim() || '';
+  return state.startsWith('08') || state.toLowerCase().includes('ready for payment');
 }
 
 // Export helper functions for use in other components
