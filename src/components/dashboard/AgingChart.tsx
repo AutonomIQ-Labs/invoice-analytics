@@ -33,7 +33,7 @@ export function AgingChart({ data, viewMode }: AgingChartProps) {
     <div className="card p-6">
       <h3 className="text-lg font-semibold text-white mb-4">Aging Breakdown</h3>
       <div className="h-72">
-        <ResponsiveContainer width="100%" height="100%" minWidth={200} minHeight={200} debounce={50}>
+        <ResponsiveContainer width="100%" height={288}>
           <BarChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 20 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
             <XAxis dataKey="bucket" stroke="#94a3b8" tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={{ stroke: '#475569' }} />

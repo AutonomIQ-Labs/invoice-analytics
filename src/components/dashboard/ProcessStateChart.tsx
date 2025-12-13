@@ -112,7 +112,7 @@ export function ProcessStateChart({ data, onStateClick }: ProcessStateChartProps
       </div>
       
       <div className="h-64">
-        <ResponsiveContainer width="100%" height="100%" minWidth={200} minHeight={200} debounce={50}>
+        <ResponsiveContainer width="100%" height={256}>
           <BarChart data={chartData} margin={{ top: 5, right: 5, left: 5, bottom: 25 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
             <XAxis 

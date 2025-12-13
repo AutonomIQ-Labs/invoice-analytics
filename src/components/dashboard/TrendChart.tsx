@@ -176,7 +176,7 @@ export function TrendChart({ batches }: TrendChartProps) {
         </div>
       </div>
       <div className="h-64">
-        <ResponsiveContainer width="100%" height="100%" minWidth={200} minHeight={200} debounce={50}>
+        <ResponsiveContainer width="100%" height={256}>
           <LineChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 20 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
             <XAxis dataKey="date" stroke="#94a3b8" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={{ stroke: '#475569' }} />
