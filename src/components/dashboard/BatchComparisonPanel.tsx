@@ -97,8 +97,8 @@ export function BatchComparisonPanel() {
       {/* State Changes */}
       <div>
         <h4 className="text-sm font-medium text-slate-400 mb-3">Status Changes</h4>
-        <div className="space-y-2 max-h-48 overflow-y-auto">
-          {comparison.stateChanges.filter(s => s.change !== 0).slice(0, 8).map((change) => (
+        <div className="space-y-2">
+          {comparison.stateChanges.filter(s => s.change !== 0).map((change) => (
             <div key={change.state} className="flex items-center justify-between bg-slate-800/30 rounded-lg px-3 py-2">
               <span className="text-sm text-slate-300 truncate flex-1">{change.state}</span>
               <div className="flex items-center gap-3 text-sm">

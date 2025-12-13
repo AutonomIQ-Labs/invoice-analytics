@@ -665,13 +665,13 @@ export function useBatchComparison(options: { includeOutliers?: boolean } = {}) 
       const previousStateMap = new Map<string, { count: number; value: number }>();
 
       current.forEach(inv => {
-        const state = inv.overall_process_state?.replace(/^\d+\s*-\s*/, '') || 'Unknown';
+        const state = inv.overall_process_state || 'Unknown';
         const existing = currentStateMap.get(state) || { count: 0, value: 0 };
         currentStateMap.set(state, { count: existing.count + 1, value: existing.value + (inv.invoice_amount || 0) });
       });
 
       previous.forEach(inv => {
-        const state = inv.overall_process_state?.replace(/^\d+\s*-\s*/, '') || 'Unknown';
+        const state = inv.overall_process_state || 'Unknown';
         const existing = previousStateMap.get(state) || { count: 0, value: 0 };
         previousStateMap.set(state, { count: existing.count + 1, value: existing.value + (inv.invoice_amount || 0) });
       });
@@ -682,7 +682,14 @@ export function useBatchComparison(options: { includeOutliers?: boolean } = {}) 
         current: currentStateMap.get(state)?.count || 0,
         previous: previousStateMap.get(state)?.count || 0,
         change: (currentStateMap.get(state)?.count || 0) - (previousStateMap.get(state)?.count || 0),
-      })).sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
+      })).sort((a, b) => {
+        // Extract numeric prefix for sorting (e.g., "01 - Header" -> 1)
+        const getOrder = (state: string): number => {
+          const match = state.match(/^(\d+)/);
+          return match ? parseInt(match[1], 10) : 999;
+        };
+        return getOrder(a.state) - getOrder(b.state);
+      });
 
       setComparison({
         currentBatch,
