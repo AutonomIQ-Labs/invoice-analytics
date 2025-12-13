@@ -97,24 +97,26 @@ export function BatchComparisonPanel() {
       {/* State Changes */}
       <div>
         <h4 className="text-sm font-medium text-slate-400 mb-3">Status Changes</h4>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {comparison.stateChanges.filter(s => s.change !== 0).map((change) => (
-            <div key={change.state} className="bg-slate-800/30 rounded-lg p-3">
-              <p className="text-sm font-medium text-slate-300 mb-1">{change.state}</p>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500 text-sm">{change.previous.toLocaleString()} → {change.current.toLocaleString()}</span>
-                <span className={`text-sm font-semibold ${
-                  change.change > 0 ? 'text-red-400' : change.change < 0 ? 'text-emerald-400' : 'text-slate-400'
-                }`}>
-                  {change.change > 0 ? '+' : ''}{change.change}
-                </span>
+        <div className="bg-slate-800/30 rounded-lg p-3 max-w-md">
+          <div className="space-y-2">
+            {comparison.stateChanges.filter(s => s.change !== 0).map((change) => (
+              <div key={change.state} className="flex items-center justify-between gap-4 text-sm">
+                <span className="text-slate-300">{change.state}</span>
+                <div className="flex items-center gap-3 flex-shrink-0">
+                  <span className="text-slate-500">{change.previous.toLocaleString()} → {change.current.toLocaleString()}</span>
+                  <span className={`font-semibold min-w-[45px] text-right ${
+                    change.change > 0 ? 'text-red-400' : change.change < 0 ? 'text-emerald-400' : 'text-slate-400'
+                  }`}>
+                    {change.change > 0 ? '+' : ''}{change.change}
+                  </span>
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
+          {comparison.stateChanges.filter(s => s.change !== 0).length === 0 && (
+            <p className="text-slate-500 text-sm text-center py-2">No status changes detected</p>
+          )}
         </div>
-        {comparison.stateChanges.filter(s => s.change !== 0).length === 0 && (
-          <p className="text-slate-500 text-sm text-center py-2">No status changes detected</p>
-        )}
       </div>
 
       {/* Totals comparison */}
