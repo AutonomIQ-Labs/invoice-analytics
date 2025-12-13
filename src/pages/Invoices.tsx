@@ -19,6 +19,17 @@ const escapeHtml = (str: string | null | undefined): string => {
     .replace(/'/g, '&#039;');
 };
 
+// Prototype pollution prevention: validate object keys
+const isSafeKey = (key: string): boolean => {
+  const dangerousKeys = ['__proto__', 'constructor', 'prototype'];
+  return !dangerousKeys.includes(key);
+};
+
+// Create a null-prototype object to prevent prototype pollution
+const createSafeRecord = <T>(): Record<string, T> => {
+  return Object.create(null) as Record<string, T>;
+};
+
 interface FilterOptions {
   processStates: string[];
   poTypes: string[];
@@ -321,21 +332,24 @@ export function Invoices() {
       const totalValue = exportData.reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0);
       const avgDaysOld = exportData.reduce((sum, inv) => sum + (inv.days_old || 0), 0) / exportData.length || 0;
 
+      // Use null-prototype objects and key validation to prevent prototype pollution
       const stateGroups = exportData.reduce((acc, inv) => {
         const state = inv.overall_process_state?.replace(/^\d+\s*-\s*/, '') || 'Unknown';
+        if (!isSafeKey(state)) return acc; // Skip dangerous keys
         if (!acc[state]) acc[state] = { count: 0, value: 0 };
         acc[state].count++;
         acc[state].value += inv.invoice_amount || 0;
         return acc;
-      }, {} as Record<string, { count: number; value: number }>);
+      }, createSafeRecord<{ count: number; value: number }>());
 
       const poGroups = exportData.reduce((acc, inv) => {
         const type = inv.po_type || 'Unknown';
+        if (!isSafeKey(type)) return acc; // Skip dangerous keys
         if (!acc[type]) acc[type] = { count: 0, value: 0 };
         acc[type].count++;
         acc[type].value += inv.invoice_amount || 0;
         return acc;
-      }, {} as Record<string, { count: number; value: number }>);
+      }, createSafeRecord<{ count: number; value: number }>());
 
       const printWindow = window.open('', '_blank');
       if (!printWindow) { alert('Please allow popups to print the report'); return; }

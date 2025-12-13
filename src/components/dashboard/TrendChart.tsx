@@ -45,16 +45,28 @@ export function TrendChart({ batches }: TrendChartProps) {
       const backlogData: BatchBacklogData[] = [];
       
       for (const batch of nonDeletedBatches) {
-        // Query invoices for this batch to count ready for payment
+        // Query invoices for this batch - include fields needed for consistent filtering
         const { data: invoices } = await supabase
           .from('invoices')
-          .select('overall_process_state')
+          .select('overall_process_state, include_in_analysis, is_outlier')
           .eq('import_batch_id', batch.id);
 
-        const total = invoices?.length ?? batch.record_count;
-        const readyForPayment = invoices?.filter(inv => 
+        // Filter invoices consistently with dashboard stats:
+        // - Outliers are excluded by default unless include_in_analysis is explicitly true
+        // - Non-outliers are included if include_in_analysis is true, null, or undefined
+        const includedInvoices = invoices?.filter(inv => {
+          if (inv.is_outlier === true) {
+            // Outliers only included if explicitly set to true
+            return inv.include_in_analysis === true;
+          }
+          // Non-outliers included by default
+          return inv.include_in_analysis === true || inv.include_in_analysis === null || inv.include_in_analysis === undefined;
+        }) ?? [];
+
+        const total = includedInvoices.length;
+        const readyForPayment = includedInvoices.filter(inv => 
           inv.overall_process_state && isReadyForPayment(inv.overall_process_state)
-        ).length ?? 0;
+        ).length;
         
         backlogData.push({
           date: formatDate(batch.imported_at),
