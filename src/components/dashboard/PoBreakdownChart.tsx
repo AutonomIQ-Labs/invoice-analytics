@@ -65,7 +65,7 @@ export function PoBreakdownChart({ data, onTypeClick }: PoBreakdownChartProps) {
       <div className="flex items-center gap-6">
         {/* Pie Chart */}
         <div className="h-48 w-48 flex-shrink-0">
-          <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={100}>
+          <ResponsiveContainer width="100%" height="100%" minWidth={150} minHeight={150}>
             <PieChart>
               <Pie
                 data={chartData}

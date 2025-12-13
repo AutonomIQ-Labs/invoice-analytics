@@ -366,7 +366,7 @@ export function Aging() {
               <h3 className="text-lg font-semibold text-white mb-4">By Invoice Count</h3>
               <div className="flex items-center gap-4">
                 <div className="h-52 w-48 flex-shrink-0">
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={150} minHeight={150}>
                     <PieChart>
                       <Pie data={bucketData as any[]} cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={2} dataKey="count" nameKey="bucket">
                         {bucketData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.color} />))}
@@ -391,7 +391,7 @@ export function Aging() {
               <h3 className="text-lg font-semibold text-white mb-4">By Total Value</h3>
               <div className="flex items-center gap-4">
                 <div className="h-52 w-48 flex-shrink-0">
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={150} minHeight={150}>
                     <PieChart>
                       <Pie data={bucketData as any[]} cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={2} dataKey="value" nameKey="bucket">
                         {bucketData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.color} />))}
