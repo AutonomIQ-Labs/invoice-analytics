@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
-import { parseCsvFile } from '../../lib/csv-parser';
+import { parseCsvFile, parseCsvText } from '../../lib/csv-parser';
+import { extractCsvFromZip, formatFileSize, type ExtractedFile } from '../../lib/zip-extractor';
 import { useAuth } from '../../hooks/useAuth';
 import type { ImportBatch } from '../../types/database';
 
@@ -9,7 +10,7 @@ interface CsvUploaderProps {
 }
 
 interface ImportProgress {
-  status: 'idle' | 'parsing' | 'uploading' | 'complete' | 'error';
+  status: 'idle' | 'extracting' | 'selecting' | 'parsing' | 'uploading' | 'complete' | 'error';
   message: string;
   progress?: number;
   result?: { 
@@ -28,13 +29,105 @@ export function CsvUploader({ onImportComplete }: CsvUploaderProps) {
   const { user } = useAuth();
   const [dragOver, setDragOver] = useState(false);
   const [progress, setProgress] = useState<ImportProgress>({ status: 'idle', message: '' });
+  const [zipFiles, setZipFiles] = useState<ExtractedFile[]>([]);
+  const [originalZipName, setOriginalZipName] = useState<string>('');
 
-  const handleFile = useCallback(async (file: File) => {
-    if (!file.name.endsWith('.csv') && !file.name.endsWith('.txt')) {
-      setProgress({ status: 'error', message: 'Please upload a CSV or TXT file' });
-      return;
+  // Process a CSV file (either direct upload or from ZIP extraction)
+  const processCsvContent = useCallback(async (content: string, filename: string) => {
+    try {
+      setProgress({ status: 'parsing', message: 'Preparing import...', progress: 5 });
+      
+      // Mark all current batches as not current (only one current batch at a time)
+      await supabase
+        .from('import_batches')
+        .update({ is_current: false })
+        .eq('is_current', true)
+        .or('is_deleted.is.null,is_deleted.eq.false');
+
+      setProgress({ status: 'parsing', message: 'Creating import batch...', progress: 10 });
+      
+      // Create new batch as current
+      const { data: batchData, error: batchError } = await supabase
+        .from('import_batches')
+        .insert({ 
+          filename: filename, 
+          record_count: 0, 
+          skipped_count: 0, 
+          imported_by: user?.id, 
+          is_current: true
+        })
+        .select()
+        .single();
+
+      if (batchError) throw batchError;
+      const batch = batchData as ImportBatch;
+
+      setProgress({ status: 'parsing', message: 'Parsing CSV file...', progress: 20 });
+      const { 
+        invoices, 
+        skippedCount, 
+        skippedFullyPaid,
+        skippedZeroValue,
+        outlierCount,
+        outlierHighValue,
+        outlierNegative,
+        errors 
+      } = parseCsvText(content, batch.id);
+
+      if (invoices.length === 0) {
+        throw new Error('No valid invoices found in the CSV file.');
+      }
+
+      setProgress({ status: 'uploading', message: `Uploading ${invoices.length.toLocaleString()} invoices...`, progress: 40 });
+      
+      const BATCH_SIZE = 500;
+      let uploaded = 0;
+
+      for (let i = 0; i < invoices.length; i += BATCH_SIZE) {
+        const batchInvoices = invoices.slice(i, i + BATCH_SIZE);
+        const { error: insertError } = await supabase.from('invoices').insert(batchInvoices as any[]);
+        if (insertError) throw insertError;
+
+        uploaded += batchInvoices.length;
+        setProgress({ status: 'uploading', message: `Uploaded ${uploaded.toLocaleString()} of ${invoices.length.toLocaleString()} invoices...`, progress: 40 + (uploaded / invoices.length) * 50 });
+      }
+
+      setProgress({ status: 'uploading', message: 'Finalizing import...', progress: 95 });
+      await supabase.from('import_batches').update({ 
+        record_count: invoices.length, 
+        skipped_count: skippedCount,
+        skipped_fully_paid: skippedFullyPaid,
+        skipped_zero_value: skippedZeroValue,
+        outlier_count: outlierCount,
+        outlier_high_value: outlierHighValue,
+        outlier_negative: outlierNegative
+      }).eq('id', batch.id);
+
+      setProgress({ 
+        status: 'complete', 
+        message: 'Import complete!', 
+        progress: 100, 
+        result: { 
+          imported: invoices.length, 
+          skipped: skippedCount, 
+          skippedFullyPaid,
+          skippedZeroValue,
+          outlierCount,
+          outlierHighValue,
+          outlierNegative,
+          errors 
+        } 
+      });
+      setZipFiles([]);
+      setOriginalZipName('');
+      onImportComplete?.();
+    } catch (error) {
+      setProgress({ status: 'error', message: error instanceof Error ? error.message : 'Import failed' });
     }
+  }, [user, onImportComplete]);
 
+  // Handle file from direct CSV upload
+  const handleCsvFile = useCallback(async (file: File) => {
     try {
       setProgress({ status: 'parsing', message: 'Preparing import...', progress: 5 });
       
@@ -125,6 +218,55 @@ export function CsvUploader({ onImportComplete }: CsvUploaderProps) {
     }
   }, [user, onImportComplete]);
 
+  // Handle ZIP file upload
+  const handleZipFile = useCallback(async (file: File) => {
+    try {
+      setProgress({ status: 'extracting', message: 'Extracting ZIP file...', progress: 10 });
+      
+      const result = await extractCsvFromZip(file);
+      
+      if (result.error) {
+        throw new Error(result.error);
+      }
+
+      if (result.files.length === 0) {
+        throw new Error('No CSV or TXT files found in the ZIP archive.');
+      }
+
+      setOriginalZipName(file.name);
+
+      if (result.files.length === 1) {
+        // Single CSV found - proceed directly
+        const csvFile = result.files[0];
+        await processCsvContent(csvFile.content, `${file.name} → ${csvFile.name}`);
+      } else {
+        // Multiple CSVs found - show selection dialog
+        setZipFiles(result.files);
+        setProgress({ status: 'selecting', message: 'Select a file to import' });
+      }
+    } catch (error) {
+      setProgress({ status: 'error', message: error instanceof Error ? error.message : 'Failed to extract ZIP file' });
+    }
+  }, [processCsvContent]);
+
+  // Handle file selection from ZIP contents
+  const handleSelectZipFile = useCallback(async (file: ExtractedFile) => {
+    await processCsvContent(file.content, `${originalZipName} → ${file.name}`);
+  }, [processCsvContent, originalZipName]);
+
+  // Main file handler - routes to appropriate handler based on file type
+  const handleFile = useCallback(async (file: File) => {
+    const lowerName = file.name.toLowerCase();
+    
+    if (lowerName.endsWith('.zip')) {
+      await handleZipFile(file);
+    } else if (lowerName.endsWith('.csv') || lowerName.endsWith('.txt')) {
+      await handleCsvFile(file);
+    } else {
+      setProgress({ status: 'error', message: 'Please upload a CSV, TXT, or ZIP file' });
+    }
+  }, [handleZipFile, handleCsvFile]);
+
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
@@ -139,6 +281,8 @@ export function CsvUploader({ onImportComplete }: CsvUploaderProps) {
 
   const reset = () => {
     setProgress({ status: 'idle', message: '' });
+    setZipFiles([]);
+    setOriginalZipName('');
   };
 
   return (
@@ -151,17 +295,63 @@ export function CsvUploader({ onImportComplete }: CsvUploaderProps) {
           <svg className="w-12 h-12 mx-auto mb-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
           </svg>
-          <p className="text-slate-300 mb-2">Drag and drop your CSV file here</p>
+          <p className="text-slate-300 mb-2">Drag and drop your file here</p>
           <p className="text-slate-500 text-sm mb-4">or</p>
           <label className="btn-primary cursor-pointer">
             Browse Files
-            <input type="file" accept=".csv,.txt" onChange={handleFileInput} className="hidden" />
+            <input type="file" accept=".csv,.txt,.zip" onChange={handleFileInput} className="hidden" />
           </label>
-          <p className="text-slate-500 text-xs mt-4">Zero-value and fully paid invoices are automatically filtered out</p>
+          <p className="text-slate-500 text-xs mt-4">CSV, TXT, or ZIP files supported</p>
+          <p className="text-slate-500 text-xs mt-1">Zero-value and fully paid invoices are automatically filtered out</p>
         </div>
       )}
 
-      {(progress.status === 'parsing' || progress.status === 'uploading') && (
+      {/* CSV Selection Dialog - shown when ZIP has multiple CSV files */}
+      {progress.status === 'selecting' && zipFiles.length > 0 && (
+        <div className="py-4">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 bg-sky-500/20 rounded-full flex items-center justify-center">
+              <svg className="w-5 h-5 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-white font-medium">Multiple CSV files found</p>
+              <p className="text-slate-400 text-sm">Select a file from <span className="text-sky-400">{originalZipName}</span></p>
+            </div>
+          </div>
+
+          <div className="space-y-2 mb-4 max-h-64 overflow-y-auto">
+            {zipFiles.map((file, index) => (
+              <button
+                key={index}
+                onClick={() => handleSelectZipFile(file)}
+                className="w-full flex items-center gap-3 p-3 bg-slate-800/50 hover:bg-slate-700/50 border border-slate-700 hover:border-sky-500/50 rounded-lg transition-colors text-left group"
+              >
+                <div className="w-8 h-8 bg-emerald-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-white text-sm font-medium truncate group-hover:text-sky-400 transition-colors">{file.name}</p>
+                  {file.path !== file.name && (
+                    <p className="text-slate-500 text-xs truncate">{file.path}</p>
+                  )}
+                </div>
+                <span className="text-slate-400 text-xs flex-shrink-0">{formatFileSize(file.size)}</span>
+                <svg className="w-4 h-4 text-slate-500 group-hover:text-sky-400 transition-colors flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            ))}
+          </div>
+
+          <button onClick={reset} className="btn-secondary w-full">Cancel</button>
+        </div>
+      )}
+
+      {(progress.status === 'extracting' || progress.status === 'parsing' || progress.status === 'uploading') && (
         <div className="py-8">
           <div className="flex items-center justify-center mb-4">
             <div className="w-12 h-12 border-4 border-sky-500 border-t-transparent rounded-full animate-spin"></div>
