@@ -3,7 +3,7 @@ interface StatCardProps {
   value: string | number;
   subtitle?: string;
   icon: string;
-  color?: 'primary' | 'green' | 'yellow' | 'red';
+  color?: 'primary' | 'green' | 'yellow' | 'red' | 'orange';
 }
 
 const colorClasses = {
@@ -11,6 +11,7 @@ const colorClasses = {
   green: 'from-emerald-500 to-emerald-600',
   yellow: 'from-amber-500 to-amber-600',
   red: 'from-red-500 to-red-600',
+  orange: 'from-orange-500 to-orange-600',
 };
 
 export function StatCard({ title, value, subtitle, icon, color = 'primary' }: StatCardProps) {
