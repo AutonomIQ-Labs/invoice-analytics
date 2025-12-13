@@ -193,7 +193,7 @@ export function MonthlyAgingChart({ data, onBucketClick, onRangeClick }: Monthly
       </div>
 
       <div className="h-80">
-        <ResponsiveContainer width="100%" height="100%" minWidth={200} minHeight={200}>
+        <ResponsiveContainer width="100%" height="100%" minWidth={200} minHeight={200} debounce={50}>
           {chartType === 'bar' ? (
             <BarChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 30 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#334155" />

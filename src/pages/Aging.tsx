@@ -251,7 +251,7 @@ export function Aging() {
           <div className="card p-6">
             <h3 className="text-lg font-semibold text-white mb-4">Aging Distribution</h3>
             <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%" minWidth={200} minHeight={200}>
+              <ResponsiveContainer width="100%" height="100%" minWidth={200} minHeight={200} debounce={50}>
                 <ComposedChart data={chartData} margin={{ top: 10, right: 30, left: 10, bottom: 30 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
                   <XAxis dataKey="bucket" stroke="#94a3b8" tick={{ fill: '#94a3b8', fontSize: 11 }} angle={-45} textAnchor="end" height={50} />
@@ -366,7 +366,7 @@ export function Aging() {
               <h3 className="text-lg font-semibold text-white mb-4">By Invoice Count</h3>
               <div className="flex items-center gap-4">
                 <div className="h-52 w-48 flex-shrink-0">
-                  <ResponsiveContainer width="100%" height="100%" minWidth={150} minHeight={150}>
+                  <ResponsiveContainer width="100%" height="100%" minWidth={150} minHeight={150} debounce={50}>
                     <PieChart>
                       <Pie data={bucketData as any[]} cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={2} dataKey="count" nameKey="bucket">
                         {bucketData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.color} />))}
@@ -391,7 +391,7 @@ export function Aging() {
               <h3 className="text-lg font-semibold text-white mb-4">By Total Value</h3>
               <div className="flex items-center gap-4">
                 <div className="h-52 w-48 flex-shrink-0">
-                  <ResponsiveContainer width="100%" height="100%" minWidth={150} minHeight={150}>
+                  <ResponsiveContainer width="100%" height="100%" minWidth={150} minHeight={150} debounce={50}>
                     <PieChart>
                       <Pie data={bucketData as any[]} cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={2} dataKey="value" nameKey="bucket">
                         {bucketData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.color} />))}
