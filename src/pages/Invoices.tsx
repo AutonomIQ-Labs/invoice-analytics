@@ -8,15 +8,20 @@ import type { Invoice } from '../types/database';
 const formatCurrency = (value: number) => new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD', minimumFractionDigits: 2 }).format(value);
 const formatDate = (dateStr: string | null) => dateStr ? new Date(dateStr).toLocaleDateString('en-CA') : '-';
 
-// Security: Prototype pollution prevention - validate object keys
-const isSafeKey = (key: string): boolean => {
-  const dangerousKeys = ['__proto__', 'constructor', 'prototype'];
-  return !dangerousKeys.includes(key);
-};
+// Security: Use Map for grouping to prevent prototype pollution (CWE-1321)
+// Maps are inherently safe from prototype pollution as they don't use object property access
+type GroupData = { count: number; value: number };
 
-// Security: Create a null-prototype object to prevent prototype pollution
-const createSafeRecord = <T,>(): Record<string, T> => {
-  return Object.create(null) as Record<string, T>;
+const createGroupMap = (): Map<string, GroupData> => new Map();
+
+const addToGroup = (map: Map<string, GroupData>, key: string, amount: number): void => {
+  const existing = map.get(key);
+  if (existing) {
+    existing.count++;
+    existing.value += amount;
+  } else {
+    map.set(key, { count: 1, value: amount });
+  }
 };
 
 interface FilterOptions {
@@ -339,24 +344,19 @@ export function Invoices() {
       const totalValue = exportData.reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0);
       const avgDaysOld = exportData.reduce((sum, inv) => sum + (inv.days_old || 0), 0) / exportData.length || 0;
 
-      // Security: Use null-prototype objects and key validation to prevent prototype pollution
-      const stateGroups = exportData.reduce((acc, inv) => {
+      // Security: Use Map to prevent prototype pollution (CWE-1321)
+      // Maps don't use object property access, eliminating prototype pollution risk
+      const stateGroups = createGroupMap();
+      for (const inv of exportData) {
         const state = inv.overall_process_state?.replace(/^\d+\s*-\s*/, '') || 'Unknown';
-        if (!isSafeKey(state)) return acc; // Skip dangerous keys
-        if (!acc[state]) acc[state] = { count: 0, value: 0 };
-        acc[state].count++;
-        acc[state].value += inv.invoice_amount || 0;
-        return acc;
-      }, createSafeRecord<{ count: number; value: number }>());
+        addToGroup(stateGroups, state, inv.invoice_amount || 0);
+      }
 
-      const poGroups = exportData.reduce((acc, inv) => {
+      const poGroups = createGroupMap();
+      for (const inv of exportData) {
         const type = inv.po_type || 'Unknown';
-        if (!isSafeKey(type)) return acc; // Skip dangerous keys
-        if (!acc[type]) acc[type] = { count: 0, value: 0 };
-        acc[type].count++;
-        acc[type].value += inv.invoice_amount || 0;
-        return acc;
-      }, createSafeRecord<{ count: number; value: number }>());
+        addToGroup(poGroups, type, inv.invoice_amount || 0);
+      }
 
       const printWindow = window.open('', '_blank');
       if (!printWindow) { alert('Please allow popups to print the report'); return; }
@@ -421,10 +421,10 @@ export function Invoices() {
         }
       }
 
-      // Build state breakdown safely
+      // Build state breakdown safely using Map iteration
       const stateBreakdown = doc.getElementById('state-breakdown');
       if (stateBreakdown) {
-        Object.entries(stateGroups)
+        Array.from(stateGroups.entries())
           .sort((a, b) => b[1].value - a[1].value)
           .slice(0, 8)
           .forEach(([state, data]) => {
@@ -442,10 +442,10 @@ export function Invoices() {
           });
       }
 
-      // Build PO breakdown safely
+      // Build PO breakdown safely using Map iteration
       const poBreakdown = doc.getElementById('po-breakdown');
       if (poBreakdown) {
-        Object.entries(poGroups)
+        Array.from(poGroups.entries())
           .sort((a, b) => b[1].value - a[1].value)
           .forEach(([type, data]) => {
             const item = doc.createElement('div');
