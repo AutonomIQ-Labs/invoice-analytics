@@ -26,9 +26,12 @@ function isReadyForPayment(processState: string): boolean {
 export function TrendChart({ batches }: TrendChartProps) {
   const [chartData, setChartData] = useState<BatchBacklogData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchBacklogData() {
+      setError(null);
+      
       // Filter out deleted batches and get last 10
       const nonDeletedBatches = batches
         .filter(batch => !batch.is_deleted)
@@ -43,25 +46,33 @@ export function TrendChart({ batches }: TrendChartProps) {
 
       // Fetch invoice status counts for each batch
       const backlogData: BatchBacklogData[] = [];
+      let queryErrors = 0;
       
       for (const batch of nonDeletedBatches) {
         // Query invoices for this batch - include fields needed for consistent filtering
-        const { data: invoices } = await supabase
+        const { data: invoices, error: queryError } = await supabase
           .from('invoices')
           .select('overall_process_state, include_in_analysis, is_outlier')
           .eq('import_batch_id', batch.id);
 
+        // Skip batches that fail to query instead of showing misleading zero values
+        if (queryError || !invoices) {
+          console.error(`Failed to fetch invoices for batch ${batch.id}:`, queryError?.message);
+          queryErrors++;
+          continue;
+        }
+
         // Filter invoices consistently with dashboard stats:
         // - Outliers are excluded by default unless include_in_analysis is explicitly true
         // - Non-outliers are included if include_in_analysis is true, null, or undefined
-        const includedInvoices = invoices?.filter(inv => {
+        const includedInvoices = invoices.filter(inv => {
           if (inv.is_outlier === true) {
             // Outliers only included if explicitly set to true
             return inv.include_in_analysis === true;
           }
           // Non-outliers included by default
           return inv.include_in_analysis === true || inv.include_in_analysis === null || inv.include_in_analysis === undefined;
-        }) ?? [];
+        });
 
         const total = includedInvoices.length;
         const readyForPayment = includedInvoices.filter(inv => 
@@ -77,6 +88,11 @@ export function TrendChart({ batches }: TrendChartProps) {
         });
       }
 
+      // If all queries failed, show error state
+      if (queryErrors > 0 && backlogData.length === 0) {
+        setError('Failed to load backlog data');
+      }
+
       setChartData(backlogData);
       setLoading(false);
     }
@@ -90,6 +106,22 @@ export function TrendChart({ batches }: TrendChartProps) {
         <h3 className="text-lg font-semibold text-white mb-4">Backlog Trend</h3>
         <div className="h-64 flex items-center justify-center">
           <div className="w-8 h-8 border-4 border-sky-500 border-t-transparent rounded-full animate-spin"></div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="card p-6">
+        <h3 className="text-lg font-semibold text-white mb-4">Backlog Trend</h3>
+        <div className="h-64 flex items-center justify-center text-red-400">
+          <div className="text-center">
+            <svg className="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <p>{error}</p>
+          </div>
         </div>
       </div>
     );
