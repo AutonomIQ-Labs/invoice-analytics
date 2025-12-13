@@ -1,20 +1,87 @@
+import { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { supabase } from '../../lib/supabase';
 import type { ImportBatch } from '../../types/database';
 
 interface TrendChartProps {
   batches: ImportBatch[];
 }
 
+interface BatchBacklogData {
+  date: string;
+  backlog: number;
+  total: number;
+  readyForPayment: number;
+  filename: string;
+}
+
 const formatDate = (dateStr: string) => new Date(dateStr).toLocaleDateString('en-CA', { month: 'short', day: 'numeric' });
 
+// Check if invoice status is "Ready For Payment" (process state 08)
+function isReadyForPayment(processState: string): boolean {
+  const state = processState.trim().toLowerCase();
+  return state.startsWith('08') || state.includes('ready for payment');
+}
+
 export function TrendChart({ batches }: TrendChartProps) {
-  // Filter out deleted batches for trend calculation - only use non-deleted batches
-  const nonDeletedBatches = batches.filter(batch => !batch.is_deleted);
-  
-  const chartData = [...nonDeletedBatches]
-    .sort((a, b) => new Date(a.imported_at).getTime() - new Date(b.imported_at).getTime())
-    .slice(-10)
-    .map(batch => ({ date: formatDate(batch.imported_at), count: batch.record_count, filename: batch.filename }));
+  const [chartData, setChartData] = useState<BatchBacklogData[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchBacklogData() {
+      // Filter out deleted batches and get last 10
+      const nonDeletedBatches = batches
+        .filter(batch => !batch.is_deleted)
+        .sort((a, b) => new Date(a.imported_at).getTime() - new Date(b.imported_at).getTime())
+        .slice(-10);
+
+      if (nonDeletedBatches.length < 2) {
+        setChartData([]);
+        setLoading(false);
+        return;
+      }
+
+      // Fetch invoice status counts for each batch
+      const backlogData: BatchBacklogData[] = [];
+      
+      for (const batch of nonDeletedBatches) {
+        // Query invoices for this batch to count ready for payment
+        const { data: invoices } = await supabase
+          .from('invoices')
+          .select('overall_process_state')
+          .eq('import_batch_id', batch.id);
+
+        const total = invoices?.length ?? batch.record_count;
+        const readyForPayment = invoices?.filter(inv => 
+          inv.overall_process_state && isReadyForPayment(inv.overall_process_state)
+        ).length ?? 0;
+        
+        backlogData.push({
+          date: formatDate(batch.imported_at),
+          backlog: total - readyForPayment,
+          total,
+          readyForPayment,
+          filename: batch.filename
+        });
+      }
+
+      setChartData(backlogData);
+      setLoading(false);
+    }
+
+    fetchBacklogData();
+  }, [batches]);
+
+  if (loading) {
+    return (
+      <div className="card p-6">
+        <h3 className="text-lg font-semibold text-white mb-4">Backlog Trend</h3>
+        <div className="h-64 flex items-center justify-center">
+          <div className="w-8 h-8 border-4 border-sky-500 border-t-transparent rounded-full animate-spin"></div>
+        </div>
+      </div>
+    );
+  }
 
   if (chartData.length < 2) {
     return (
@@ -32,9 +99,9 @@ export function TrendChart({ batches }: TrendChartProps) {
     );
   }
 
-  const firstCount = chartData[0].count;
-  const lastCount = chartData[chartData.length - 1].count;
-  const change = lastCount - firstCount;
+  const firstBacklog = chartData[0].backlog;
+  const lastBacklog = chartData[chartData.length - 1].backlog;
+  const change = lastBacklog - firstBacklog;
 
   return (
     <div className="card p-6">
@@ -53,8 +120,15 @@ export function TrendChart({ batches }: TrendChartProps) {
             <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
             <XAxis dataKey="date" stroke="#94a3b8" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={{ stroke: '#475569' }} />
             <YAxis stroke="#94a3b8" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={{ stroke: '#475569' }} tickFormatter={(value) => value.toLocaleString()} />
-            <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: '#f8fafc' }} formatter={(value: number) => [value.toLocaleString(), 'Invoices']} />
-            <Line type="monotone" dataKey="count" stroke="#0ea5e9" strokeWidth={2} dot={{ fill: '#0ea5e9', strokeWidth: 2, r: 4 }} activeDot={{ r: 6, fill: '#0ea5e9' }} />
+            <Tooltip 
+              contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: '#f8fafc' }} 
+              formatter={(value: number, name: string) => [
+                value.toLocaleString(), 
+                name === 'backlog' ? 'Backlog' : name
+              ]}
+              labelFormatter={(label) => `Date: ${label}`}
+            />
+            <Line type="monotone" dataKey="backlog" stroke="#f97316" strokeWidth={2} dot={{ fill: '#f97316', strokeWidth: 2, r: 4 }} activeDot={{ r: 6, fill: '#f97316' }} />
           </LineChart>
         </ResponsiveContainer>
       </div>

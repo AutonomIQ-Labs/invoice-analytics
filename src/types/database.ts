@@ -52,6 +52,8 @@ export interface ImportBatch {
   outlier_count?: number;
   outlier_high_value?: number;
   outlier_negative?: number;
+  // Backlog tracking
+  ready_for_payment_count?: number;
 }
 
 export interface OutlierSettings {
