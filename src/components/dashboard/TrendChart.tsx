@@ -49,15 +49,36 @@ export function TrendChart({ batches }: TrendChartProps) {
       let queryErrors = 0;
       
       for (const batch of nonDeletedBatches) {
-        // Query invoices for this batch - include fields needed for consistent filtering
-        const { data: invoices, error: queryError } = await supabase
-          .from('invoices')
-          .select('overall_process_state, include_in_analysis, is_outlier')
-          .eq('import_batch_id', batch.id);
+        // Fetch ALL invoices for this batch using pagination (Supabase has 1000 row limit)
+        const allInvoices: { overall_process_state: string | null; include_in_analysis: boolean | null; is_outlier: boolean | null }[] = [];
+        const pageSize = 1000;
+        let page = 0;
+        let hasMore = true;
+        let batchError = false;
 
-        // Skip batches that fail to query instead of showing misleading zero values
-        if (queryError || !invoices) {
-          console.error(`Failed to fetch invoices for batch ${batch.id}:`, queryError?.message);
+        while (hasMore) {
+          const from = page * pageSize;
+          const to = from + pageSize - 1;
+
+          const { data: invoices, error: queryError } = await supabase
+            .from('invoices')
+            .select('overall_process_state, include_in_analysis, is_outlier')
+            .eq('import_batch_id', batch.id)
+            .range(from, to);
+
+          if (queryError || !invoices) {
+            console.error(`Failed to fetch invoices for batch ${batch.id}:`, queryError?.message);
+            batchError = true;
+            break;
+          }
+
+          allInvoices.push(...invoices);
+          hasMore = invoices.length === pageSize;
+          page++;
+        }
+
+        // Skip batches that fail to query
+        if (batchError) {
           queryErrors++;
           continue;
         }
@@ -65,7 +86,7 @@ export function TrendChart({ batches }: TrendChartProps) {
         // Filter invoices consistently with dashboard stats:
         // - Outliers are excluded by default unless include_in_analysis is explicitly true
         // - Non-outliers are included if include_in_analysis is true, null, or undefined
-        const includedInvoices = invoices.filter(inv => {
+        const includedInvoices = allInvoices.filter(inv => {
           if (inv.is_outlier === true) {
             // Outliers only included if explicitly set to true
             return inv.include_in_analysis === true;
