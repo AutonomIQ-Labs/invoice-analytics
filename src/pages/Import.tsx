@@ -61,23 +61,23 @@ export function Import() {
           <div className="space-y-4 text-sm">
             <div className="flex gap-3">
               <div className="w-6 h-6 rounded-full bg-sky-500/20 text-sky-400 flex items-center justify-center flex-shrink-0 text-xs font-bold">1</div>
-              <div><p className="text-white font-medium">Export from SKG Payables</p><p className="text-slate-400">Export the combined aging report as CSV</p></div>
+              <div><p className="text-white font-medium">Prepare Your Data</p><p className="text-slate-400">Export your aging report as CSV, TXT, or ZIP</p></div>
             </div>
             <div className="flex gap-3">
               <div className="w-6 h-6 rounded-full bg-sky-500/20 text-sky-400 flex items-center justify-center flex-shrink-0 text-xs font-bold">2</div>
-              <div><p className="text-white font-medium">Upload File</p><p className="text-slate-400">Drag and drop or click to upload your CSV file</p></div>
+              <div><p className="text-white font-medium">Upload File</p><p className="text-slate-400">Drag and drop or click to upload (CSV, TXT, or ZIP)</p></div>
             </div>
             <div className="flex gap-3">
               <div className="w-6 h-6 rounded-full bg-sky-500/20 text-sky-400 flex items-center justify-center flex-shrink-0 text-xs font-bold">3</div>
-              <div><p className="text-white font-medium">Data Processing</p><p className="text-slate-400">Zero-value and fully paid invoices are automatically filtered out</p></div>
+              <div><p className="text-white font-medium">Automatic Filtering</p><p className="text-slate-400">Zero-value and fully paid (09) invoices are excluded</p></div>
             </div>
             <div className="flex gap-3">
               <div className="w-6 h-6 rounded-full bg-sky-500/20 text-sky-400 flex items-center justify-center flex-shrink-0 text-xs font-bold">4</div>
-              <div><p className="text-white font-medium">View Analytics</p><p className="text-slate-400">Data is available immediately on the Dashboard</p></div>
+              <div><p className="text-white font-medium">Outlier Detection</p><p className="text-slate-400">High-value and negative amounts are flagged for review</p></div>
             </div>
           </div>
           <div className="mt-6 p-4 bg-sky-500/10 border border-sky-500/30 rounded-lg">
-            <p className="text-sky-400 text-sm"><strong>Tip:</strong> Import your combined aging report containing all invoices. The dashboard will show aging buckets from 0-30 days through 360+ days.</p>
+            <p className="text-sky-400 text-sm"><strong>Tip:</strong> ZIP files with multiple CSVs will prompt you to select which file to import. View your data immediately on the Dashboard.</p>
           </div>
         </div>
       </div>
