@@ -277,13 +277,6 @@ export function parseCsvFile(file: File, batchId: string): Promise<ParseResult> 
   });
 }
 
-// Check if invoice is "Ready For Payment" (process state 08)
-function isReadyForPayment(processState: string | null): boolean {
-  if (!processState) return false;
-  const state = processState.trim().toLowerCase();
-  return state.startsWith('08') || state.includes('ready for payment');
-}
-
 export function parseCsvText(text: string, batchId: string): ParseResult {
   const invoices: Omit<Invoice, 'id' | 'imported_at'>[] = [];
   let skippedCount = 0;
@@ -292,7 +285,6 @@ export function parseCsvText(text: string, batchId: string): ParseResult {
   let outlierCount = 0;
   let outlierHighValue = 0;
   let outlierNegative = 0;
-  let readyForPaymentCount = 0;
   const errors: string[] = [];
 
   // Auto-detect delimiter (tab or comma)
@@ -316,10 +308,6 @@ export function parseCsvText(text: string, batchId: string): ParseResult {
       const result = mapRowToInvoice(row, batchId);
       if (result.invoice) {
         invoices.push(result.invoice);
-        // Count ready for payment invoices for backlog tracking
-        if (isReadyForPayment(result.invoice.overall_process_state)) {
-          readyForPaymentCount++;
-        }
         if (result.isOutlier) {
           outlierCount++;
           if (result.outlierReason === 'high_value') outlierHighValue++;
@@ -344,7 +332,6 @@ export function parseCsvText(text: string, batchId: string): ParseResult {
     outlierCount,
     outlierHighValue,
     outlierNegative,
-    readyForPaymentCount,
     errors 
   };
 }
