@@ -30,6 +30,7 @@ export function TrendChart({ batches }: TrendChartProps) {
 
   useEffect(() => {
     async function fetchBacklogData() {
+      setLoading(true);
       setError(null);
       
       // Filter out deleted batches and get last 10
