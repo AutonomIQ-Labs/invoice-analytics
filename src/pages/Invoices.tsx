@@ -8,17 +8,6 @@ import type { Invoice } from '../types/database';
 const formatCurrency = (value: number) => new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD', minimumFractionDigits: 2 }).format(value);
 const formatDate = (dateStr: string | null) => dateStr ? new Date(dateStr).toLocaleDateString('en-CA') : '-';
 
-// Security: HTML escape function to prevent XSS attacks
-const escapeHtml = (str: string | null | undefined): string => {
-  if (str == null) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-};
-
 // Security: Prototype pollution prevention - validate object keys
 const isSafeKey = (key: string): boolean => {
   const dangerousKeys = ['__proto__', 'constructor', 'prototype'];
@@ -342,7 +331,7 @@ export function Invoices() {
     }
   };
 
-  // Print Report
+  // Print Report - Uses safe DOM manipulation to prevent XSS
   const printReport = async () => {
     setExporting(true);
     try {
@@ -372,12 +361,155 @@ export function Invoices() {
       const printWindow = window.open('', '_blank');
       if (!printWindow) { alert('Please allow popups to print the report'); return; }
 
-      // Security: Escape filter values to prevent XSS
-      const activeFiltersText = Object.entries(filters).filter(([_, v]) => v !== '').map(([k, v]) => `${escapeHtml(k)}: ${escapeHtml(v)}`).join(', ') || 'None';
+      // Security: Build document using DOM API to prevent XSS
+      // First write the static structure, then use DOM methods for dynamic content
+      const doc = printWindow.document;
+      doc.open();
+      
+      // Static HTML structure - no user data interpolated here
+      const staticHtml = `<!DOCTYPE html><html><head><title>Invoice Report</title><style>* { margin: 0; padding: 0; box-sizing: border-box; } body { font-family: Arial, sans-serif; padding: 20px; color: #333; font-size: 11px; } .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #0ea5e9; padding-bottom: 15px; } .header h1 { color: #0ea5e9; font-size: 24px; margin-bottom: 5px; } .header p { color: #666; } .summary { display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; } .summary-card { flex: 1; min-width: 150px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; text-align: center; } .summary-card .value { font-size: 20px; font-weight: bold; color: #0ea5e9; } .summary-card .label { font-size: 10px; color: #64748b; margin-top: 3px; } .section { margin-bottom: 20px; } .section h3 { color: #334155; font-size: 14px; margin-bottom: 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; } .breakdown { display: flex; gap: 20px; flex-wrap: wrap; } .breakdown-group { flex: 1; min-width: 200px; } .breakdown-item { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #f1f5f9; } .breakdown-item .name { color: #475569; } .breakdown-item .stats { color: #64748b; } table { width: 100%; border-collapse: collapse; font-size: 9px; } th { background: #0ea5e9; color: white; padding: 8px 4px; text-align: left; font-weight: 600; } td { padding: 6px 4px; border-bottom: 1px solid #e2e8f0; } tr:nth-child(even) { background: #f8fafc; } .amount { text-align: right; font-family: monospace; } .filters { background: #fef3c7; border: 1px solid #fcd34d; border-radius: 6px; padding: 10px; margin-bottom: 15px; font-size: 10px; } .filters strong { color: #92400e; } .footer { margin-top: 20px; text-align: center; color: #94a3b8; font-size: 10px; border-top: 1px solid #e2e8f0; padding-top: 10px; } .vendor-cell { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .state-cell { max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } @media print { body { padding: 10px; } .no-print { display: none; } }</style></head><body>
+        <div class="header"><h1>SKG Payables Invoice Report</h1><p id="generated-date"></p></div>
+        <div id="filters-container"></div>
+        <div class="summary">
+          <div class="summary-card"><div class="value" id="total-count"></div><div class="label">Total Invoices</div></div>
+          <div class="summary-card"><div class="value" id="total-value"></div><div class="label">Total Value</div></div>
+          <div class="summary-card"><div class="value" id="avg-days"></div><div class="label">Avg Days Old</div></div>
+        </div>
+        <div class="section"><h3>Breakdown Summary</h3><div class="breakdown">
+          <div class="breakdown-group"><strong style="font-size: 11px; color: #334155;">By Process State</strong><div id="state-breakdown"></div></div>
+          <div class="breakdown-group"><strong style="font-size: 11px; color: #334155;">By PO Type</strong><div id="po-breakdown"></div></div>
+        </div></div>
+        <div class="section"><h3 id="details-header"></h3><table><thead><tr><th>Invoice #</th><th>Vendor</th><th>Amount</th><th>Days</th><th>Process State</th><th>Approver</th><th>Coded By</th><th>Payment Method</th><th>PO Type</th></tr></thead><tbody id="invoice-tbody"></tbody></table></div>
+        <div class="footer"><p>Report generated from SKG Invoice Analytics Dashboard</p><p id="footer-stats"></p></div>
+      </body></html>`;
+      
+      doc.write(staticHtml);
+      doc.close();
 
-      // Security: Build HTML with all user data properly escaped to prevent XSS
-      printWindow.document.write(`<!DOCTYPE html><html><head><title>Invoice Report - ${new Date().toLocaleDateString('en-CA')}</title><style>* { margin: 0; padding: 0; box-sizing: border-box; } body { font-family: Arial, sans-serif; padding: 20px; color: #333; font-size: 11px; } .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #0ea5e9; padding-bottom: 15px; } .header h1 { color: #0ea5e9; font-size: 24px; margin-bottom: 5px; } .header p { color: #666; } .summary { display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; } .summary-card { flex: 1; min-width: 150px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; text-align: center; } .summary-card .value { font-size: 20px; font-weight: bold; color: #0ea5e9; } .summary-card .label { font-size: 10px; color: #64748b; margin-top: 3px; } .section { margin-bottom: 20px; } .section h3 { color: #334155; font-size: 14px; margin-bottom: 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; } .breakdown { display: flex; gap: 20px; flex-wrap: wrap; } .breakdown-group { flex: 1; min-width: 200px; } .breakdown-item { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #f1f5f9; } .breakdown-item .name { color: #475569; } .breakdown-item .stats { color: #64748b; } table { width: 100%; border-collapse: collapse; font-size: 9px; } th { background: #0ea5e9; color: white; padding: 8px 4px; text-align: left; font-weight: 600; } td { padding: 6px 4px; border-bottom: 1px solid #e2e8f0; } tr:nth-child(even) { background: #f8fafc; } .amount { text-align: right; font-family: monospace; } .filters { background: #fef3c7; border: 1px solid #fcd34d; border-radius: 6px; padding: 10px; margin-bottom: 15px; font-size: 10px; } .filters strong { color: #92400e; } .footer { margin-top: 20px; text-align: center; color: #94a3b8; font-size: 10px; border-top: 1px solid #e2e8f0; padding-top: 10px; } @media print { body { padding: 10px; } .no-print { display: none; } }</style></head><body><div class="header"><h1>SKG Payables Invoice Report</h1><p>Saskatchewan Health Authority - Generated ${new Date().toLocaleString('en-CA')}</p></div>${activeFilterCount > 0 ? `<div class="filters"><strong>Active Filters:</strong> ${activeFiltersText}</div>` : ''}<div class="summary"><div class="summary-card"><div class="value">${exportData.length.toLocaleString()}</div><div class="label">Total Invoices</div></div><div class="summary-card"><div class="value">${formatCurrency(totalValue)}</div><div class="label">Total Value</div></div><div class="summary-card"><div class="value">${Math.round(avgDaysOld)}</div><div class="label">Avg Days Old</div></div></div><div class="section"><h3>Breakdown Summary</h3><div class="breakdown"><div class="breakdown-group"><strong style="font-size: 11px; color: #334155;">By Process State</strong>${Object.entries(stateGroups).sort((a, b) => b[1].value - a[1].value).slice(0, 8).map(([state, data]) => `<div class="breakdown-item"><span class="name">${escapeHtml(state)}</span><span class="stats">${data.count} inv · ${formatCurrency(data.value)}</span></div>`).join('')}</div><div class="breakdown-group"><strong style="font-size: 11px; color: #334155;">By PO Type</strong>${Object.entries(poGroups).sort((a, b) => b[1].value - a[1].value).map(([type, data]) => `<div class="breakdown-item"><span class="name">${escapeHtml(type)}</span><span class="stats">${data.count} inv · ${formatCurrency(data.value)}</span></div>`).join('')}</div></div></div><div class="section"><h3>Invoice Details (${exportData.length} records)</h3><table><thead><tr><th>Invoice #</th><th>Vendor</th><th>Amount</th><th>Days</th><th>Process State</th><th>Approver</th><th>Coded By</th><th>Payment Method</th><th>PO Type</th></tr></thead><tbody>${exportData.slice(0, 500).map(inv => `<tr><td>${escapeHtml(inv.invoice_number) || '-'}</td><td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(inv.supplier) || '-'}</td><td class="amount">${formatCurrency(inv.invoice_amount || 0)}</td><td>${inv.days_old || '-'}</td><td style="max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(inv.overall_process_state?.replace(/^\d+\s*-\s*/, '')) || '-'}</td><td>${escapeHtml(inv.approver_id) || '-'}</td><td>${escapeHtml(inv.coded_by) || '-'}</td><td>${escapeHtml(inv.payment_method) || '-'}</td><td>${escapeHtml(inv.po_type) || '-'}</td></tr>`).join('')}${exportData.length > 500 ? `<tr><td colspan="9" style="text-align: center; color: #94a3b8; font-style: italic;">... and ${exportData.length - 500} more records (showing first 500)</td></tr>` : ''}</tbody></table></div><div class="footer"><p>Report generated from SKG Invoice Analytics Dashboard</p><p>Total records: ${exportData.length} | Total value: ${formatCurrency(totalValue)}</p></div><script>window.onload = function() { window.print(); }</script></body></html>`);
-      printWindow.document.close();
+      // Security: Now populate dynamic content using textContent (safe from XSS)
+      const setTextById = (id: string, text: string) => {
+        const el = doc.getElementById(id);
+        if (el) el.textContent = text;
+      };
+
+      // Set safe text content for all dynamic values
+      setTextById('generated-date', `Saskatchewan Health Authority - Generated ${new Date().toLocaleString('en-CA')}`);
+      setTextById('total-count', exportData.length.toLocaleString());
+      setTextById('total-value', formatCurrency(totalValue));
+      setTextById('avg-days', String(Math.round(avgDaysOld)));
+      setTextById('details-header', `Invoice Details (${exportData.length} records)`);
+      setTextById('footer-stats', `Total records: ${exportData.length} | Total value: ${formatCurrency(totalValue)}`);
+
+      // Build filters section safely if there are active filters
+      if (activeFilterCount > 0) {
+        const filtersContainer = doc.getElementById('filters-container');
+        if (filtersContainer) {
+          const filtersDiv = doc.createElement('div');
+          filtersDiv.className = 'filters';
+          const strong = doc.createElement('strong');
+          strong.textContent = 'Active Filters: ';
+          filtersDiv.appendChild(strong);
+          
+          // Build filter text safely using textContent
+          const activeFilters = Object.entries(filters)
+            .filter(([_, v]) => v !== '')
+            .map(([k, v]) => `${k}: ${v}`)
+            .join(', ');
+          const filterText = doc.createTextNode(activeFilters);
+          filtersDiv.appendChild(filterText);
+          filtersContainer.appendChild(filtersDiv);
+        }
+      }
+
+      // Build state breakdown safely
+      const stateBreakdown = doc.getElementById('state-breakdown');
+      if (stateBreakdown) {
+        Object.entries(stateGroups)
+          .sort((a, b) => b[1].value - a[1].value)
+          .slice(0, 8)
+          .forEach(([state, data]) => {
+            const item = doc.createElement('div');
+            item.className = 'breakdown-item';
+            const nameSpan = doc.createElement('span');
+            nameSpan.className = 'name';
+            nameSpan.textContent = state;
+            const statsSpan = doc.createElement('span');
+            statsSpan.className = 'stats';
+            statsSpan.textContent = `${data.count} inv · ${formatCurrency(data.value)}`;
+            item.appendChild(nameSpan);
+            item.appendChild(statsSpan);
+            stateBreakdown.appendChild(item);
+          });
+      }
+
+      // Build PO breakdown safely
+      const poBreakdown = doc.getElementById('po-breakdown');
+      if (poBreakdown) {
+        Object.entries(poGroups)
+          .sort((a, b) => b[1].value - a[1].value)
+          .forEach(([type, data]) => {
+            const item = doc.createElement('div');
+            item.className = 'breakdown-item';
+            const nameSpan = doc.createElement('span');
+            nameSpan.className = 'name';
+            nameSpan.textContent = type;
+            const statsSpan = doc.createElement('span');
+            statsSpan.className = 'stats';
+            statsSpan.textContent = `${data.count} inv · ${formatCurrency(data.value)}`;
+            item.appendChild(nameSpan);
+            item.appendChild(statsSpan);
+            poBreakdown.appendChild(item);
+          });
+      }
+
+      // Build invoice table rows safely
+      const tbody = doc.getElementById('invoice-tbody');
+      if (tbody) {
+        exportData.slice(0, 500).forEach((inv, index) => {
+          const tr = doc.createElement('tr');
+          if (index % 2 === 1) tr.style.background = '#f8fafc';
+          
+          const cells = [
+            { text: inv.invoice_number || '-', className: '' },
+            { text: inv.supplier || '-', className: 'vendor-cell' },
+            { text: formatCurrency(inv.invoice_amount || 0), className: 'amount' },
+            { text: String(inv.days_old || '-'), className: '' },
+            { text: inv.overall_process_state?.replace(/^\d+\s*-\s*/, '') || '-', className: 'state-cell' },
+            { text: inv.approver_id || '-', className: '' },
+            { text: inv.coded_by || '-', className: '' },
+            { text: inv.payment_method || '-', className: '' },
+            { text: inv.po_type || '-', className: '' },
+          ];
+          
+          cells.forEach(cell => {
+            const td = doc.createElement('td');
+            td.textContent = cell.text;
+            if (cell.className) td.className = cell.className;
+            tr.appendChild(td);
+          });
+          
+          tbody.appendChild(tr);
+        });
+
+        // Add "more records" row if needed
+        if (exportData.length > 500) {
+          const tr = doc.createElement('tr');
+          const td = doc.createElement('td');
+          td.colSpan = 9;
+          td.style.textAlign = 'center';
+          td.style.color = '#94a3b8';
+          td.style.fontStyle = 'italic';
+          td.textContent = `... and ${exportData.length - 500} more records (showing first 500)`;
+          tr.appendChild(td);
+          tbody.appendChild(tr);
+        }
+      }
+
+      // Trigger print after DOM is ready
+      printWindow.onload = () => printWindow.print();
+      // Fallback for browsers that don't fire onload after document.write
+      setTimeout(() => printWindow.print(), 100);
+      
     } catch (error) {
       console.error('Print failed:', error);
       alert('Print failed. Please try again.');
