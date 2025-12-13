@@ -99,7 +99,6 @@ export function BatchComparisonPanel() {
           <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Value Delta</p>
           <p className={`text-2xl font-bold ${netValueChange >= 0 ? 'text-red-400' : 'text-emerald-400'}`}>
             {netValueChange >= 0 ? '+' : ''}{formatCurrency(netValueChange)}
-            <span className="text-slate-500 ml-1">$</span>
           </p>
         </div>
       </div>
