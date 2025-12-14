@@ -198,8 +198,11 @@ CREATE POLICY "Admins can delete invitations"
 
 -- Drop existing policies if they exist (to recreate with admin access)
 DROP POLICY IF EXISTS "Users can view own batches" ON import_batches;
+DROP POLICY IF EXISTS "Users can insert batches" ON import_batches;
+DROP POLICY IF EXISTS "Users can update own batches" ON import_batches;
 DROP POLICY IF EXISTS "Users can delete own batches" ON import_batches;
 DROP POLICY IF EXISTS "Admins can view all batches" ON import_batches;
+DROP POLICY IF EXISTS "Admins can update all batches" ON import_batches;
 DROP POLICY IF EXISTS "Admins can delete all batches" ON import_batches;
 
 -- Users can view their own batches
@@ -207,9 +210,29 @@ CREATE POLICY "Users can view own batches"
   ON import_batches FOR SELECT
   USING (imported_by = auth.uid());
 
+-- Users can insert new batches (required for import)
+CREATE POLICY "Users can insert batches"
+  ON import_batches FOR INSERT
+  WITH CHECK (auth.uid() IS NOT NULL);
+
+-- Users can update their own batches (required for import finalization)
+CREATE POLICY "Users can update own batches"
+  ON import_batches FOR UPDATE
+  USING (imported_by = auth.uid() OR imported_by IS NULL);
+
 -- Admins can view all batches
 CREATE POLICY "Admins can view all batches"
   ON import_batches FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM profiles
+      WHERE id = auth.uid() AND role = 'admin'
+    )
+  );
+
+-- Admins can update all batches
+CREATE POLICY "Admins can update all batches"
+  ON import_batches FOR UPDATE
   USING (
     EXISTS (
       SELECT 1 FROM profiles
@@ -227,9 +250,45 @@ CREATE POLICY "Admins can delete all batches"
     )
   );
 
--- Similar for invoices (if RLS is enabled)
--- Note: If invoices don't have RLS yet, you may need to enable it first:
--- ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
+-- ============================================
+-- 6b. INVOICES TABLE RLS POLICIES
+-- Allow authenticated users to insert/view invoices
+-- ============================================
+
+-- Drop existing invoice policies if they exist
+DROP POLICY IF EXISTS "Users can view invoices" ON invoices;
+DROP POLICY IF EXISTS "Users can insert invoices" ON invoices;
+DROP POLICY IF EXISTS "Users can update invoices" ON invoices;
+DROP POLICY IF EXISTS "Users can delete invoices" ON invoices;
+DROP POLICY IF EXISTS "Admins can delete invoices" ON invoices;
+
+-- Enable RLS on invoices if not already enabled
+ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
+
+-- All authenticated users can view invoices
+CREATE POLICY "Users can view invoices"
+  ON invoices FOR SELECT
+  USING (auth.uid() IS NOT NULL);
+
+-- All authenticated users can insert invoices (required for import)
+CREATE POLICY "Users can insert invoices"
+  ON invoices FOR INSERT
+  WITH CHECK (auth.uid() IS NOT NULL);
+
+-- All authenticated users can update invoices (for outlier management)
+CREATE POLICY "Users can update invoices"
+  ON invoices FOR UPDATE
+  USING (auth.uid() IS NOT NULL);
+
+-- Admins can delete invoices
+CREATE POLICY "Admins can delete invoices"
+  ON invoices FOR DELETE
+  USING (
+    EXISTS (
+      SELECT 1 FROM profiles
+      WHERE id = auth.uid() AND role = 'admin'
+    )
+  );
 
 -- ============================================
 -- 7. BOOTSTRAP FIRST ADMIN
