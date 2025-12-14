@@ -76,3 +76,41 @@ export interface BatchComparison {
     currentState: string;
   }[];
 }
+
+// User management types
+export interface UserProfile {
+  id: string;
+  email: string;
+  role: 'admin' | 'user';
+  display_name: string | null;
+  created_at: string;
+  updated_at: string;
+  invited_by: string | null;
+  first_login: boolean;
+}
+
+export interface Invitation {
+  id: string;
+  email: string;
+  role: 'admin' | 'user';
+  invited_by: string | null;
+  created_at: string;
+  expires_at: string;
+  accepted_at: string | null;
+}
+
+// Extended user profile with inviter details (for display)
+export interface UserProfileWithInviter extends UserProfile {
+  inviter?: {
+    email: string;
+    display_name: string | null;
+  } | null;
+}
+
+// Extended invitation with inviter details (for display)
+export interface InvitationWithInviter extends Invitation {
+  inviter?: {
+    email: string;
+    display_name: string | null;
+  } | null;
+}

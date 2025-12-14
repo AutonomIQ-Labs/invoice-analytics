@@ -17,8 +17,9 @@
 6. [Outlier Management](#6-outlier-management)
 7. [Importing Data](#7-importing-data)
 8. [Exporting & Printing Reports](#8-exporting--printing-reports)
-9. [Tips & Best Practices](#9-tips--best-practices)
-10. [Glossary](#10-glossary)
+9. [Admin Dashboard](#9-admin-dashboard)
+10. [Tips & Best Practices](#10-tips--best-practices)
+11. [Glossary](#11-glossary)
 
 ---
 
@@ -857,9 +858,144 @@ From the **Outliers** page:
 
 ---
 
-## 9. Tips & Best Practices
+## 9. Admin Dashboard
 
-### 9.1 Recommended Daily Workflow
+The Admin Dashboard is available only to users with **Administrator** privileges. It allows managing users, sending invitations, and administering application data.
+
+> 🔒 **Note:** The Admin menu item only appears in the sidebar if you are logged in as an administrator.
+
+### 9.1 Accessing the Admin Dashboard
+
+If you have admin privileges:
+1. Look for the **Admin** item in the sidebar navigation (with a shield icon)
+2. Click to access the Admin Dashboard
+3. The menu item displays a purple "Admin" badge
+
+### 9.2 User Management Tab
+
+The **Users** tab displays all registered users in the system.
+
+**User Table Columns:**
+| Column | Description |
+|--------|-------------|
+| **User** | Avatar, name, and email address |
+| **Role** | Administrator or User badge |
+| **Joined** | Registration date |
+| **Status** | Active or Pending first login |
+| **Actions** | Role toggle and delete buttons |
+
+**Available Actions:**
+- **Change Role**: Click the swap icon to toggle between Admin and User roles
+- **Delete User**: Remove a user from the system (cannot delete yourself)
+
+### 9.3 Adding New Users
+
+Click the **Add User** button to open the invitation modal. Two methods are available:
+
+#### Method 1: Send Email Invite
+
+Sends a magic link to the user's email. They will set their own password.
+
+1. Select **Send Email Invite** tab
+2. Enter the user's email address
+3. Select the role (User or Admin)
+4. Click **Send Invitation**
+5. The user receives an email with a login link
+
+#### Method 2: Create Account Directly
+
+Creates an account with a password you specify.
+
+1. Select **Create Account** tab
+2. Enter the user's email address
+3. Enter or generate a temporary password
+4. Select the role (User or Admin)
+5. Click **Create Account**
+6. Share the credentials with the user
+
+### 9.4 Password Requirements
+
+When creating accounts directly or when users sign up, passwords must meet these requirements:
+
+| Requirement | Details |
+|-------------|---------|
+| **Minimum Length** | 6 characters |
+| **Maximum Length** | No limit |
+| **Character Types** | Any characters allowed |
+
+**Generated Passwords:**
+
+When using the **Generate Password** button, the system creates a 12-character password using:
+
+| Character Type | Allowed Characters |
+|----------------|-------------------|
+| **Uppercase Letters** | A-Z (excluding I, O for clarity) |
+| **Lowercase Letters** | a-z (excluding i, l, o for clarity) |
+| **Numbers** | 2-9 (excluding 0, 1 for clarity) |
+| **Special Characters** | ! @ # $ % |
+
+> 💡 **Tip:** Generated passwords avoid ambiguous characters (0/O, 1/l/I) to prevent confusion when sharing credentials.
+
+### 9.5 Invitations Tab
+
+The **Invitations** tab shows pending email invitations that haven't been accepted yet.
+
+**Invitation Information:**
+- Email address invited
+- Role assigned (Admin or User)
+- Time remaining until expiration (7 days default)
+- Who sent the invitation
+- Date sent
+
+**Available Actions:**
+- **Resend**: Send the invitation email again and reset expiration
+- **Revoke**: Cancel the pending invitation
+
+**Statistics Display:**
+- Total pending invitations
+- Active (not expired)
+- Expired invitations
+
+### 9.6 Data Management Tab
+
+The **Data Management** tab provides administrative control over all imported data.
+
+**Statistics Cards:**
+| Card | Description |
+|------|-------------|
+| **Import Batches** | Total number of import batches in the system |
+| **Total Invoices** | Combined count of all invoices |
+| **Registered Users** | Number of user accounts |
+
+**Batch Management Table:**
+| Column | Description |
+|--------|-------------|
+| **File** | Original filename uploaded |
+| **Imported By** | User who performed the import |
+| **Records** | Number of invoices in the batch |
+| **Date** | When the import occurred |
+| **Status** | Current or Historical |
+| **Actions** | Delete button |
+
+**Deleting Batches:**
+1. Click the delete icon on any batch
+2. Confirm the deletion
+3. All invoices in that batch are permanently removed
+
+> ⚠️ **Warning:** Batch deletion is permanent and removes all associated invoice data.
+
+### 9.7 User Roles
+
+| Role | Capabilities |
+|------|--------------|
+| **User** | View dashboard, browse invoices, import data, manage outliers |
+| **Administrator** | All User capabilities + manage users, invitations, and all data |
+
+---
+
+## 10. Tips & Best Practices
+
+### 10.1 Recommended Daily Workflow
 
 1. **Import fresh data** each morning from SKG Payables
 2. **Check the Dashboard** for batch comparison changes
@@ -867,7 +1003,7 @@ From the **Outliers** page:
 4. **Analyze Aging** to identify oldest invoices
 5. **Export reports** for team meetings or audits
 
-### 9.2 Efficient Navigation Tips
+### 10.2 Efficient Navigation Tips
 
 | Action | How |
 |--------|-----|
@@ -876,21 +1012,21 @@ From the **Outliers** page:
 | **Bookmark filters** | URLs contain filter parameters - bookmark for quick access |
 | **Close modals** | Press Escape key or click outside |
 
-### 9.3 Data Accuracy Tips
+### 10.3 Data Accuracy Tips
 
 - **Import regularly**: Daily imports ensure trending is accurate
 - **Review outliers first**: High-value items can skew averages significantly
 - **Check skipped counts**: Verify expected invoices weren't filtered
 - **Compare batches**: Use the comparison panel to spot anomalies
 
-### 9.4 Performance Tips
+### 10.4 Performance Tips
 
 - **Use filters**: Narrow results before exporting large datasets
 - **Clear old filters**: Reset when switching analysis focus
 - **Limit print scope**: Print reports work best under 500 records
 - **Delete old batches**: Remove unneeded historical batches
 
-### 9.5 Keyboard Shortcuts
+### 10.5 Keyboard Shortcuts
 
 | Key | Action |
 |-----|--------|
@@ -900,9 +1036,9 @@ From the **Outliers** page:
 
 ---
 
-## 10. Glossary
+## 11. Glossary
 
-### 10.1 Key Terms
+### 11.1 Key Terms
 
 | Term | Definition |
 |------|------------|
@@ -915,7 +1051,7 @@ From the **Outliers** page:
 | **PO** | Purchase Order |
 | **Process State** | Current workflow status of an invoice |
 
-### 10.2 Process State Reference
+### 11.2 Process State Reference
 
 | Code | Status | Description |
 |------|--------|-------------|
@@ -947,7 +1083,7 @@ From the **Outliers** page:
 | 330-360 | 330-359 days | Extreme | 🟢 Lime |
 | 360+ | 360+ days | Maximum | ❌ Dark Red |
 
-### 10.4 Outlier Thresholds
+### 11.4 Outlier Thresholds
 
 | Outlier Type | Criteria | Rationale |
 |--------------|----------|-----------|
