@@ -109,7 +109,8 @@ export function DataManagement() {
     }
   };
 
-  const handlePermanentDelete = async (batchId: string) => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _handlePermanentDelete = async (batchId: string) => {
     setDeletingId(batchId);
     setError(null);
 
