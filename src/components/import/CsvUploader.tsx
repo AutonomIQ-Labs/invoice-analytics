@@ -38,11 +38,27 @@ export function CsvUploader({ onImportComplete }: CsvUploaderProps) {
       setProgress({ status: 'parsing', message: 'Preparing import...', progress: 5 });
       
       // Mark all current batches as not current (only one current batch at a time)
-      await supabase
+      // Use a timeout to prevent hanging if RLS blocks the query
+      const updateCurrentPromise = supabase
         .from('import_batches')
         .update({ is_current: false })
         .eq('is_current', true)
         .or('is_deleted.is.null,is_deleted.eq.false');
+      
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Database update timed out. Please check your database connection and RLS policies.')), 15000)
+      );
+      
+      try {
+        const updateResult = await Promise.race([updateCurrentPromise, timeoutPromise]) as Awaited<typeof updateCurrentPromise>;
+        if (updateResult.error) {
+          console.warn('Warning: Could not update existing batches:', updateResult.error.message);
+          // Continue anyway - this is not fatal, just means we might have multiple "current" batches temporarily
+        }
+      } catch (timeoutErr) {
+        console.warn('Warning: Timeout updating existing batches, continuing with import');
+        // Continue with import - new batch will still be created
+      }
 
       setProgress({ status: 'parsing', message: 'Creating import batch...', progress: 10 });
       
@@ -132,11 +148,27 @@ export function CsvUploader({ onImportComplete }: CsvUploaderProps) {
       setProgress({ status: 'parsing', message: 'Preparing import...', progress: 5 });
       
       // Mark all current batches as not current (only one current batch at a time)
-      await supabase
+      // Use a timeout to prevent hanging if RLS blocks the query
+      const updateCurrentPromise = supabase
         .from('import_batches')
         .update({ is_current: false })
         .eq('is_current', true)
         .or('is_deleted.is.null,is_deleted.eq.false');
+      
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Database update timed out. Please check your database connection and RLS policies.')), 15000)
+      );
+      
+      try {
+        const updateResult = await Promise.race([updateCurrentPromise, timeoutPromise]) as Awaited<typeof updateCurrentPromise>;
+        if (updateResult.error) {
+          console.warn('Warning: Could not update existing batches:', updateResult.error.message);
+          // Continue anyway - this is not fatal
+        }
+      } catch (timeoutErr) {
+        console.warn('Warning: Timeout updating existing batches, continuing with import');
+        // Continue with import
+      }
 
       setProgress({ status: 'parsing', message: 'Creating import batch...', progress: 10 });
       
