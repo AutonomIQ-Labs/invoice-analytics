@@ -124,8 +124,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    setProfile(null);
-    await supabase.auth.signOut();
+    try {
+      // Clear state immediately
+      setProfile(null);
+      setUser(null);
+      setSession(null);
+      
+      // Sign out from Supabase
+      await supabase.auth.signOut();
+      
+      // Force clear any cached auth data
+      localStorage.removeItem('supabase.auth.token');
+      
+      // Force page reload to ensure clean state
+      window.location.href = '/';
+    } catch (error) {
+      console.error('Sign out error:', error);
+      // Force reload anyway to clear state
+      window.location.href = '/';
+    }
   };
 
   const isAdmin = profile?.role === 'admin';
