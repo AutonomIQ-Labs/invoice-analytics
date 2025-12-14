@@ -49,26 +49,68 @@ interface UseInvoicesOptions {
   includeOutliers?: boolean; // Whether to include outliers (default: respects include_in_analysis)
 }
 
+// Timeout wrapper for async operations (works with Supabase queries and regular promises)
+async function withTimeout<T>(promiseOrThenable: PromiseLike<T>, ms: number, fallback: T): Promise<T> {
+  const timeout = new Promise<T>((resolve) => 
+    setTimeout(() => {
+      console.warn(`Operation timed out after ${ms}ms`);
+      resolve(fallback);
+    }, ms)
+  );
+  // Convert to proper Promise to ensure race works correctly
+  return Promise.race([Promise.resolve(promiseOrThenable), timeout]);
+}
+
+// Fallback response for timeout scenarios
+const timeoutResponse = { data: null, error: null, count: null, status: 408, statusText: 'Request Timeout' };
+const timeoutResponseArray = { data: [] as ImportBatch[], error: null, count: null, status: 408, statusText: 'Request Timeout' };
+
 // Helper to get the current batch ID, excluding deleted batches
 async function getCurrentBatchId(): Promise<string | null> {
-  const { data } = await supabase
-    .from('import_batches')
-    .select('id')
-    .eq('is_current', true)
-    .or('is_deleted.is.null,is_deleted.eq.false')
-    .maybeSingle();
-  return data?.id || null;
+  try {
+    const result = await withTimeout(
+      supabase
+        .from('import_batches')
+        .select('id')
+        .eq('is_current', true)
+        .or('is_deleted.is.null,is_deleted.eq.false')
+        .maybeSingle(),
+      10000,
+      timeoutResponse
+    );
+    if (result.error) {
+      console.warn('Error fetching current batch ID:', result.error.message);
+      return null;
+    }
+    return result.data?.id || null;
+  } catch (err) {
+    console.error('Exception fetching current batch ID:', err);
+    return null;
+  }
 }
 
 // Helper to get current batch with full info
 async function getCurrentBatch(): Promise<ImportBatch | null> {
-  const { data } = await supabase
-    .from('import_batches')
-    .select('*')
-    .eq('is_current', true)
-    .or('is_deleted.is.null,is_deleted.eq.false')
-    .maybeSingle();
-  return data as ImportBatch | null;
+  try {
+    const result = await withTimeout(
+      supabase
+        .from('import_batches')
+        .select('*')
+        .eq('is_current', true)
+        .or('is_deleted.is.null,is_deleted.eq.false')
+        .maybeSingle(),
+      10000,
+      timeoutResponse
+    );
+    if (result.error) {
+      console.warn('Error fetching current batch:', result.error.message);
+      return null;
+    }
+    return result.data as ImportBatch | null;
+  } catch (err) {
+    console.error('Exception fetching current batch:', err);
+    return null;
+  }
 }
 
 export function useInvoices(options: UseInvoicesOptions = {}) {
@@ -169,14 +211,19 @@ export function useImportBatches() {
   const fetchBatches = useCallback(async () => {
     setLoading(true);
     try {
-      const { data, error: queryError } = await supabase
-        .from('import_batches')
-        .select('*')
-        .order('imported_at', { ascending: false });
+      const result = await withTimeout(
+        supabase
+          .from('import_batches')
+          .select('*')
+          .order('imported_at', { ascending: false }),
+        15000,
+        timeoutResponseArray
+      );
 
-      if (queryError) throw queryError;
-      setBatches((data as ImportBatch[]) || []);
+      if (result.error) throw result.error;
+      setBatches((result.data as ImportBatch[]) || []);
     } catch (err) {
+      console.error('Error fetching batches:', err);
       setError(err as Error);
     } finally {
       setLoading(false);
@@ -286,12 +333,13 @@ export function useDashboardStats() {
   const fetchStats = useCallback(async () => {
     setLoading(true);
     try {
-      // Get current batch
+      // Get current batch with timeout protection
       const batch = await getCurrentBatch();
       setCurrentBatch(batch);
       
       if (!batch) {
         setStats(null);
+        setLoading(false);
         return;
       }
 
@@ -354,6 +402,7 @@ export function useDashboardStats() {
       
       if (invoices.length === 0) {
         setStats(null);
+        setLoading(false);
         return;
       }
 
@@ -551,33 +600,41 @@ export function useBatchComparison(options: { includeOutliers?: boolean } = {}) 
   const fetchComparison = useCallback(async () => {
     setLoading(true);
     try {
-      // Get the current batch
-      const { data: currentBatchData, error: currentBatchError } = await supabase
-        .from('import_batches')
-        .select('*')
-        .eq('is_current', true)
-        .or('is_deleted.is.null,is_deleted.eq.false')
-        .maybeSingle();
+      // Get the current batch with timeout
+      const currentBatchResult = await withTimeout(
+        supabase
+          .from('import_batches')
+          .select('*')
+          .eq('is_current', true)
+          .or('is_deleted.is.null,is_deleted.eq.false')
+          .maybeSingle(),
+        10000,
+        timeoutResponse
+      );
 
-      if (currentBatchError || !currentBatchData) {
+      if (currentBatchResult.error || !currentBatchResult.data) {
         setComparison(null);
         setLoading(false);
         return;
       }
 
-      const currentBatch = currentBatchData as ImportBatch;
+      const currentBatch = currentBatchResult.data as ImportBatch;
 
       // Get the most recent non-deleted batch BEFORE the current one
-      const { data: previousBatchData } = await supabase
-        .from('import_batches')
-        .select('*')
-        .lt('imported_at', currentBatch.imported_at)
-        .or('is_deleted.is.null,is_deleted.eq.false')
-        .order('imported_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const previousBatchResult = await withTimeout(
+        supabase
+          .from('import_batches')
+          .select('*')
+          .lt('imported_at', currentBatch.imported_at)
+          .or('is_deleted.is.null,is_deleted.eq.false')
+          .order('imported_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        10000,
+        timeoutResponse
+      );
 
-      const previousBatch = previousBatchData as ImportBatch | null;
+      const previousBatch = previousBatchResult.data as ImportBatch | null;
 
       // Get current batch invoices with pagination (respecting include_in_analysis)
       const current: Invoice[] = [];
