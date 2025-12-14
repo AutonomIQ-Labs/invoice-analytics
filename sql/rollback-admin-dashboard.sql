@@ -69,19 +69,19 @@ DROP POLICY IF EXISTS "Authenticated users can delete batches" ON import_batches
 -- Recreate simple policies for authenticated users
 CREATE POLICY "Authenticated users can view batches"
   ON import_batches FOR SELECT
-  USING (auth.uid() IS NOT NULL);
+  USING ((select auth.uid()) IS NOT NULL);
 
 CREATE POLICY "Authenticated users can insert batches"
   ON import_batches FOR INSERT
-  WITH CHECK (auth.uid() IS NOT NULL);
+  WITH CHECK ((select auth.uid()) IS NOT NULL);
 
 CREATE POLICY "Authenticated users can update batches"
   ON import_batches FOR UPDATE
-  USING (auth.uid() IS NOT NULL);
+  USING ((select auth.uid()) IS NOT NULL);
 
 CREATE POLICY "Authenticated users can delete batches"
   ON import_batches FOR DELETE
-  USING (auth.uid() IS NOT NULL);
+  USING ((select auth.uid()) IS NOT NULL);
 
 -- ============================================
 -- STEP 7: RESTORE ORIGINAL RLS POLICIES ON INVOICES
@@ -101,19 +101,19 @@ DROP POLICY IF EXISTS "Authenticated users can delete invoices" ON invoices;
 -- Recreate simple policies for authenticated users
 CREATE POLICY "Authenticated users can view invoices"
   ON invoices FOR SELECT
-  USING (auth.uid() IS NOT NULL);
+  USING ((select auth.uid()) IS NOT NULL);
 
 CREATE POLICY "Authenticated users can insert invoices"
   ON invoices FOR INSERT
-  WITH CHECK (auth.uid() IS NOT NULL);
+  WITH CHECK ((select auth.uid()) IS NOT NULL);
 
 CREATE POLICY "Authenticated users can update invoices"
   ON invoices FOR UPDATE
-  USING (auth.uid() IS NOT NULL);
+  USING ((select auth.uid()) IS NOT NULL);
 
 CREATE POLICY "Authenticated users can delete invoices"
   ON invoices FOR DELETE
-  USING (auth.uid() IS NOT NULL);
+  USING ((select auth.uid()) IS NOT NULL);
 
 -- ============================================
 -- STEP 8: VERIFY ROLLBACK

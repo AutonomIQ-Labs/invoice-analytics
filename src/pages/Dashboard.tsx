@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDashboardStats, useImportBatches } from '../hooks/useInvoices';
 import { StatCard } from '../components/dashboard/StatCard';
@@ -5,12 +6,44 @@ import { AgingChart } from '../components/dashboard/AgingChart';
 import { MonthlyAgingChart } from '../components/dashboard/MonthlyAgingChart';
 import { ProcessStateChart } from '../components/dashboard/ProcessStateChart';
 import { VendorTable } from '../components/dashboard/VendorTable';
-import { TrendChart } from '../components/dashboard/TrendChart';
 import { PoBreakdownChart } from '../components/dashboard/PoBreakdownChart';
 import { BatchComparisonPanel } from '../components/dashboard/BatchComparisonPanel';
 
+// Lazy load trend components for faster initial page load
+const TrendChart = lazy(() => import('../components/dashboard/TrendChart').then(m => ({ default: m.TrendChart })));
+const ProcessStateTrendWidgets = lazy(() => import('../components/dashboard/ProcessStateTrendWidgets').then(m => ({ default: m.ProcessStateTrendWidgets })));
+
 const formatCurrency = (value: number) => new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD', notation: 'compact', maximumFractionDigits: 1 }).format(value);
 const formatDate = (dateStr: string) => new Date(dateStr).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+// Skeleton loader for trend charts
+function TrendChartSkeleton() {
+  return (
+    <div className="card p-6">
+      <div className="h-6 bg-slate-700 rounded w-1/4 mb-4"></div>
+      <div className="h-64 bg-slate-800/50 rounded animate-pulse"></div>
+    </div>
+  );
+}
+
+// Skeleton loader for process state trend widgets
+function ProcessStateTrendsSkeleton() {
+  return (
+    <div className="card p-6">
+      <div className="h-6 bg-slate-700 rounded w-1/3 mb-4"></div>
+      <div className="h-4 bg-slate-700 rounded w-1/2 mb-6"></div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        {[...Array(6)].map((_, i) => (
+          <div key={i} className="bg-slate-800/50 rounded-lg p-4 border border-slate-700/50 animate-pulse">
+            <div className="h-4 bg-slate-700 rounded w-2/3 mb-2"></div>
+            <div className="h-6 bg-slate-700 rounded w-1/2 mb-4"></div>
+            <div className="h-16 bg-slate-700/50 rounded"></div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export function Dashboard() {
   const navigate = useNavigate();
@@ -122,7 +155,13 @@ export function Dashboard() {
 
           <BatchComparisonPanel />
 
-          <TrendChart batches={batches} />
+          <Suspense fallback={<TrendChartSkeleton />}>
+            <TrendChart batches={batches} />
+          </Suspense>
+
+          <Suspense fallback={<ProcessStateTrendsSkeleton />}>
+            <ProcessStateTrendWidgets batches={batches} />
+          </Suspense>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <AgingChart data={stats.agingBreakdown} />

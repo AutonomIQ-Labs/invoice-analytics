@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { supabase } from '../../lib/supabase';
-import { isReadyForPayment } from '../../hooks/useInvoices';
 import type { ImportBatch } from '../../types/database';
 
 interface TrendChartProps {
@@ -16,7 +15,13 @@ interface BatchBacklogData {
   filename: string;
 }
 
-const formatDate = (dateStr: string) => new Date(dateStr).toLocaleDateString('en-CA', { month: 'short', day: 'numeric' });
+// Format date with time for unique labels when multiple imports on same day
+const formatDate = (dateStr: string) => {
+  const date = new Date(dateStr);
+  const dateOnly = date.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' });
+  const time = date.toLocaleTimeString('en-CA', { hour: '2-digit', minute: '2-digit', hour12: false });
+  return `${dateOnly} ${time}`;
+};
 
 export function TrendChart({ batches }: TrendChartProps) {
   const [chartData, setChartData] = useState<BatchBacklogData[]>([]);
@@ -28,90 +33,61 @@ export function TrendChart({ batches }: TrendChartProps) {
       setLoading(true);
       setError(null);
       
-      // Filter out deleted batches and get last 10
-      const nonDeletedBatches = batches
-        .filter(batch => !batch.is_deleted)
-        .sort((a, b) => new Date(a.imported_at).getTime() - new Date(b.imported_at).getTime())
-        .slice(-10);
+      try {
+        // Filter out deleted batches and sort by import timestamp (chronological order)
+        // Most recent import is always last - this ensures the chart reflects actual import order
+        const batchesForChart = batches
+          .filter(batch => !batch.is_deleted)
+          .sort((a, b) => new Date(a.imported_at).getTime() - new Date(b.imported_at).getTime())
+          .slice(-5); // Last 5 batches for faster loading
 
-      if (nonDeletedBatches.length < 2) {
-        setChartData([]);
-        setLoading(false);
-        return;
-      }
-
-      // Fetch invoice status counts for each batch
-      const backlogData: BatchBacklogData[] = [];
-      let queryErrors = 0;
-      
-      for (const batch of nonDeletedBatches) {
-        // Fetch ALL invoices for this batch using pagination (Supabase has 1000 row limit)
-        const allInvoices: { overall_process_state: string | null; include_in_analysis: boolean | null; is_outlier: boolean | null }[] = [];
-        const pageSize = 1000;
-        let page = 0;
-        let hasMore = true;
-        let batchError = false;
-
-        while (hasMore) {
-          const from = page * pageSize;
-          const to = from + pageSize - 1;
-
-          const { data: invoices, error: queryError } = await supabase
-            .from('invoices')
-            .select('overall_process_state, include_in_analysis, is_outlier')
-            .eq('import_batch_id', batch.id)
-            .range(from, to);
-
-          if (queryError || !invoices) {
-            console.error(`Failed to fetch invoices for batch ${batch.id}:`, queryError?.message);
-            batchError = true;
-            break;
-          }
-
-          allInvoices.push(...invoices);
-          hasMore = invoices.length === pageSize;
-          page++;
+        if (batchesForChart.length < 2) {
+          setChartData([]);
+          setLoading(false);
+          return;
         }
 
-        // Skip batches that fail to query
-        if (batchError) {
-          queryErrors++;
-          continue;
+        // Fetch pre-calculated stats for all batches in a single query
+        const batchIds = batchesForChart.map(b => b.id);
+        const { data: statsData, error: statsError } = await supabase
+          .from('batch_stats')
+          .select('batch_id, backlog_count, total_invoices, ready_for_payment_count')
+          .in('batch_id', batchIds);
+
+        if (statsError) {
+          console.error('Failed to fetch batch stats:', statsError.message);
+          setError('Failed to load backlog data');
+          setLoading(false);
+          return;
         }
 
-        // Filter invoices consistently with dashboard stats:
-        // - Outliers are excluded by default unless include_in_analysis is explicitly true
-        // - Non-outliers are included if include_in_analysis is true, null, or undefined
-        const includedInvoices = allInvoices.filter(inv => {
-          if (inv.is_outlier === true) {
-            // Outliers only included if explicitly set to true
-            return inv.include_in_analysis === true;
-          }
-          // Non-outliers included by default
-          return inv.include_in_analysis === true || inv.include_in_analysis === null || inv.include_in_analysis === undefined;
+        // Map stats to chart data, maintaining chronological order
+        const backlogData: BatchBacklogData[] = batchesForChart.map(batch => {
+          const stats = statsData?.find(s => s.batch_id === batch.id);
+          return {
+            date: formatDate(batch.imported_at),
+            backlog: stats?.backlog_count || 0,
+            total: stats?.total_invoices || 0,
+            readyForPayment: stats?.ready_for_payment_count || 0,
+            filename: batch.filename
+          };
         });
 
-        const total = includedInvoices.length;
-        const readyForPayment = includedInvoices.filter(inv => 
-          isReadyForPayment(inv.overall_process_state)
-        ).length;
+        // Filter out batches with no stats (might not have been backfilled yet)
+        const validData = backlogData.filter(d => d.total > 0);
         
-        backlogData.push({
-          date: formatDate(batch.imported_at),
-          backlog: total - readyForPayment,
-          total,
-          readyForPayment,
-          filename: batch.filename
-        });
+        if (validData.length < 2) {
+          // Fall back message if stats aren't available
+          setChartData([]);
+        } else {
+          setChartData(validData);
+        }
+      } catch (err) {
+        console.error('Error fetching trend data:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load backlog data');
+      } finally {
+        setLoading(false);
       }
-
-      // If all queries failed, show error state
-      if (queryErrors > 0 && backlogData.length === 0) {
-        setError('Failed to load backlog data');
-      }
-
-      setChartData(backlogData);
-      setLoading(false);
     }
 
     fetchBacklogData();
@@ -154,6 +130,7 @@ export function TrendChart({ batches }: TrendChartProps) {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
             </svg>
             <p>Need at least 2 imports to show trends</p>
+            <p className="text-xs mt-2">Import new data to see trend statistics</p>
           </div>
         </div>
       </div>
@@ -198,4 +175,3 @@ export function TrendChart({ batches }: TrendChartProps) {
     </div>
   );
 }
-

@@ -3,7 +3,77 @@ import { supabase } from '../../lib/supabase';
 import { parseCsvFile, parseCsvText } from '../../lib/csv-parser';
 import { extractCsvFromZip, formatFileSize, type ExtractedFile } from '../../lib/zip-extractor';
 import { useAuth } from '../../hooks/useAuth';
-import type { ImportBatch } from '../../types/database';
+import { isReadyForPayment } from '../../hooks/useInvoices';
+import type { ImportBatch, Invoice } from '../../types/database';
+
+// Helper function to calculate and store batch stats during import
+async function calculateAndStoreBatchStats(
+  batchId: string, 
+  invoices: Omit<Invoice, 'id' | 'imported_at'>[]
+) {
+  // Filter invoices consistently with dashboard stats logic:
+  // - Outliers: only include if include_in_analysis is explicitly true
+  // - Non-outliers: include if include_in_analysis is true, null, or undefined
+  const includedInvoices = invoices.filter(inv => {
+    if (inv.is_outlier === true) {
+      // Outliers only included if explicitly set to true
+      return inv.include_in_analysis === true;
+    }
+    // Non-outliers included by default (excluded only if explicitly false)
+    return inv.include_in_analysis === true || inv.include_in_analysis === null || inv.include_in_analysis === undefined;
+  });
+  
+  // Calculate stats by process state
+  const statsByState = new Map<string, { count: number; value: number }>();
+  let backlogCount = 0, backlogValue = 0;
+  let readyCount = 0, readyValue = 0;
+  let totalValue = 0;
+
+  includedInvoices.forEach(inv => {
+    const state = inv.overall_process_state || 'Unknown';
+    const amount = inv.invoice_amount || 0;
+    totalValue += amount;
+    
+    // Update state breakdown
+    const existing = statsByState.get(state) || { count: 0, value: 0 };
+    statsByState.set(state, { 
+      count: existing.count + 1, 
+      value: existing.value + amount 
+    });
+    
+    // Track backlog vs ready for payment
+    if (isReadyForPayment(state)) {
+      readyCount++;
+      readyValue += amount;
+    } else {
+      backlogCount++;
+      backlogValue += amount;
+    }
+  });
+
+  // Convert Map to plain object for JSON storage
+  const processStateCounts: Record<string, { count: number; value: number }> = {};
+  statsByState.forEach((value, key) => {
+    processStateCounts[key] = value;
+  });
+
+  // Store in batch_stats table
+  const { error } = await supabase.from('batch_stats').insert({
+    batch_id: batchId,
+    total_invoices: includedInvoices.length,
+    total_value: totalValue,
+    backlog_count: backlogCount,
+    backlog_value: backlogValue,
+    ready_for_payment_count: readyCount,
+    ready_for_payment_value: readyValue,
+    process_state_counts: processStateCounts
+  });
+
+  if (error) {
+    console.warn('Failed to store batch stats:', error.message);
+    // Non-fatal - import can continue without stats
+  }
+}
 
 interface CsvUploaderProps {
   onImportComplete?: () => void;
@@ -107,6 +177,11 @@ export function CsvUploader({ onImportComplete }: CsvUploaderProps) {
         uploaded += batchInvoices.length;
         setProgress({ status: 'uploading', message: `Uploaded ${uploaded.toLocaleString()} of ${invoices.length.toLocaleString()} invoices...`, progress: 40 + (uploaded / invoices.length) * 50 });
       }
+
+      setProgress({ status: 'uploading', message: 'Calculating statistics...', progress: 92 });
+      
+      // Calculate and store batch stats for fast dashboard loading
+      await calculateAndStoreBatchStats(batch.id, invoices);
 
       setProgress({ status: 'uploading', message: 'Finalizing import...', progress: 95 });
       await supabase.from('import_batches').update({ 
@@ -217,6 +292,11 @@ export function CsvUploader({ onImportComplete }: CsvUploaderProps) {
         uploaded += batchInvoices.length;
         setProgress({ status: 'uploading', message: `Uploaded ${uploaded.toLocaleString()} of ${invoices.length.toLocaleString()} invoices...`, progress: 40 + (uploaded / invoices.length) * 50 });
       }
+
+      setProgress({ status: 'uploading', message: 'Calculating statistics...', progress: 92 });
+      
+      // Calculate and store batch stats for fast dashboard loading
+      await calculateAndStoreBatchStats(batch.id, invoices);
 
       setProgress({ status: 'uploading', message: 'Finalizing import...', progress: 95 });
       await supabase.from('import_batches').update({ 

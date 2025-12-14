@@ -76,3 +76,18 @@ export interface BatchComparison {
     currentState: string;
   }[];
 }
+
+// Pre-calculated batch statistics for fast dashboard loading
+export interface BatchStats {
+  id: string;
+  batch_id: string;
+  total_invoices: number;
+  total_value: number;
+  backlog_count: number;
+  backlog_value: number;
+  ready_for_payment_count: number;
+  ready_for_payment_value: number;
+  // JSON object: { "01 - Header To Be Verified": { count: 1234, value: 5678.90 }, ... }
+  process_state_counts: Record<string, { count: number; value: number }>;
+  calculated_at: string;
+}

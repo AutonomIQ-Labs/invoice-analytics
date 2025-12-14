@@ -4,13 +4,18 @@
 -- WARNING: This is destructive and cannot be undone!
 -- ============================================
 
--- Step 1: Delete all invoices (child records must be deleted first)
+-- Step 1: Delete all batch stats (pre-calculated statistics)
+DELETE FROM batch_stats;
+
+-- Step 2: Delete all invoices (child records must be deleted first)
 DELETE FROM invoices;
 
--- Step 2: Delete all import batches
+-- Step 3: Delete all import batches
 DELETE FROM import_batches;
 
--- Step 3: Verify tables are empty
+-- Step 4: Verify tables are empty
+SELECT 'batch_stats' as table_name, COUNT(*) as row_count FROM batch_stats
+UNION ALL
 SELECT 'invoices' as table_name, COUNT(*) as row_count FROM invoices
 UNION ALL
 SELECT 'import_batches' as table_name, COUNT(*) as row_count FROM import_batches;
