@@ -109,38 +109,6 @@ export function DataManagement() {
     }
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const _handlePermanentDelete = async (batchId: string) => {
-    setDeletingId(batchId);
-    setError(null);
-
-    try {
-      // Delete invoices first (cascade)
-      const { error: invoiceError } = await supabase
-        .from('invoices')
-        .delete()
-        .eq('import_batch_id', batchId);
-
-      if (invoiceError) throw invoiceError;
-
-      // Permanently delete the batch
-      const { error } = await supabase
-        .from('import_batches')
-        .delete()
-        .eq('id', batchId);
-
-      if (error) throw error;
-
-      setBatches(batches.filter(b => b.id !== batchId));
-      setDeleteConfirmId(null);
-      fetchStats();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to permanently delete batch');
-    } finally {
-      setDeletingId(null);
-    }
-  };
-
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString('en-US', {
       year: 'numeric',
