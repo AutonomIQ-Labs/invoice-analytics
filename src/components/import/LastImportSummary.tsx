@@ -2,15 +2,25 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import type { ImportBatch } from '../../types/database';
 
-// Timeout wrapper
+// Timeout wrapper - properly cleans up timer to avoid resource leaks
 async function withTimeout<T>(promiseOrThenable: PromiseLike<T>, ms: number, fallback: T): Promise<T> {
-  const timeout = new Promise<T>((resolve) => 
-    setTimeout(() => {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  
+  const timeoutPromise = new Promise<T>((resolve) => {
+    timeoutId = setTimeout(() => {
       console.warn(`LastImportSummary: Operation timed out after ${ms}ms`);
       resolve(fallback);
-    }, ms)
-  );
-  return Promise.race([Promise.resolve(promiseOrThenable), timeout]);
+    }, ms);
+  });
+  
+  try {
+    const result = await Promise.race([Promise.resolve(promiseOrThenable), timeoutPromise]);
+    return result;
+  } finally {
+    if (timeoutId !== null) {
+      clearTimeout(timeoutId);
+    }
+  }
 }
 
 export function LastImportSummary() {
@@ -31,7 +41,7 @@ export function LastImportSummary() {
             .or('is_deleted.is.null,is_deleted.eq.false')
             .maybeSingle(),
           10000,
-          { data: null, error: null, count: null, status: 408, statusText: 'Timeout' }
+          { data: null, error: { message: 'Request timed out', code: 'TIMEOUT' }, count: null, status: 408, statusText: 'Timeout' }
         );
         
         if (result.error) {

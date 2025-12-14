@@ -50,20 +50,33 @@ interface UseInvoicesOptions {
 }
 
 // Timeout wrapper for async operations (works with Supabase queries and regular promises)
+// Properly cleans up the timer when the promise resolves first to avoid resource leaks
 async function withTimeout<T>(promiseOrThenable: PromiseLike<T>, ms: number, fallback: T): Promise<T> {
-  const timeout = new Promise<T>((resolve) => 
-    setTimeout(() => {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  
+  const timeoutPromise = new Promise<T>((resolve) => {
+    timeoutId = setTimeout(() => {
       console.warn(`Operation timed out after ${ms}ms`);
       resolve(fallback);
-    }, ms)
-  );
-  // Convert to proper Promise to ensure race works correctly
-  return Promise.race([Promise.resolve(promiseOrThenable), timeout]);
+    }, ms);
+  });
+  
+  try {
+    const result = await Promise.race([Promise.resolve(promiseOrThenable), timeoutPromise]);
+    return result;
+  } finally {
+    // Clean up the timeout to prevent resource leaks and false warnings
+    if (timeoutId !== null) {
+      clearTimeout(timeoutId);
+    }
+  }
 }
 
-// Fallback response for timeout scenarios
-const timeoutResponse = { data: null, error: null, count: null, status: 408, statusText: 'Request Timeout' };
-const timeoutResponseArray = { data: [] as ImportBatch[], error: null, count: null, status: 408, statusText: 'Request Timeout' };
+// Fallback response for timeout scenarios - includes error so timeout triggers error handling
+// Using 'as any' because these are special timeout responses that don't match exact Supabase types
+const timeoutError = { message: 'Request timed out', code: 'TIMEOUT' } as any;
+const timeoutResponse = { data: null, error: timeoutError, count: null, status: 408, statusText: 'Request Timeout' } as any;
+const timeoutResponseArray = { data: [] as ImportBatch[], error: timeoutError, count: null, status: 408, statusText: 'Request Timeout' } as any;
 
 // Helper to get the current batch ID, excluding deleted batches
 async function getCurrentBatchId(): Promise<string | null> {
