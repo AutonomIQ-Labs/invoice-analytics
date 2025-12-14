@@ -1,7 +1,10 @@
 -- ============================================
--- Admin Dashboard Migration
+-- RESTORE Admin Dashboard Migration
 -- Version: 1.0
--- Description: Creates profiles and invitations tables for user management
+-- Description: Re-applies the admin dashboard features if needed in the future
+-- 
+-- This is a backup copy of the original admin-dashboard-migration.sql
+-- Run this in Supabase SQL Editor to restore admin functionality
 -- ============================================
 
 -- ============================================
@@ -197,13 +200,10 @@ CREATE POLICY "Admins can delete invitations"
 -- ============================================
 
 -- Drop existing policies if they exist (to recreate with admin access)
-DROP POLICY IF EXISTS "Users can view own batches" ON import_batches;
-DROP POLICY IF EXISTS "Users can insert batches" ON import_batches;
-DROP POLICY IF EXISTS "Users can update own batches" ON import_batches;
-DROP POLICY IF EXISTS "Users can delete own batches" ON import_batches;
-DROP POLICY IF EXISTS "Admins can view all batches" ON import_batches;
-DROP POLICY IF EXISTS "Admins can update all batches" ON import_batches;
-DROP POLICY IF EXISTS "Admins can delete all batches" ON import_batches;
+DROP POLICY IF EXISTS "Authenticated users can view batches" ON import_batches;
+DROP POLICY IF EXISTS "Authenticated users can insert batches" ON import_batches;
+DROP POLICY IF EXISTS "Authenticated users can update batches" ON import_batches;
+DROP POLICY IF EXISTS "Authenticated users can delete batches" ON import_batches;
 
 -- Users can view their own batches
 CREATE POLICY "Users can view own batches"
@@ -256,11 +256,10 @@ CREATE POLICY "Admins can delete all batches"
 -- ============================================
 
 -- Drop existing invoice policies if they exist
-DROP POLICY IF EXISTS "Users can view invoices" ON invoices;
-DROP POLICY IF EXISTS "Users can insert invoices" ON invoices;
-DROP POLICY IF EXISTS "Users can update invoices" ON invoices;
-DROP POLICY IF EXISTS "Users can delete invoices" ON invoices;
-DROP POLICY IF EXISTS "Admins can delete invoices" ON invoices;
+DROP POLICY IF EXISTS "Authenticated users can view invoices" ON invoices;
+DROP POLICY IF EXISTS "Authenticated users can insert invoices" ON invoices;
+DROP POLICY IF EXISTS "Authenticated users can update invoices" ON invoices;
+DROP POLICY IF EXISTS "Authenticated users can delete invoices" ON invoices;
 
 -- Enable RLS on invoices if not already enabled
 ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
@@ -308,23 +307,5 @@ CREATE POLICY "Admins can delete invoices"
 -- UPDATE profiles 
 -- SET role = 'admin' 
 -- WHERE email = 'your-email@example.com';
---
--- OPTION 3: Via SQL using user ID
--- Get the user ID from auth.users table, then:
---
--- UPDATE profiles 
--- SET role = 'admin' 
--- WHERE id = 'your-user-uuid-here';
---
--- OPTION 4: Automatic first admin (uncomment and run once)
--- This promotes the first registered user to admin:
---
--- UPDATE profiles 
--- SET role = 'admin' 
--- WHERE id = (
---   SELECT id FROM profiles 
---   ORDER BY created_at ASC 
---   LIMIT 1
--- );
 --
 -- ============================================
