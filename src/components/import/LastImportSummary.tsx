@@ -41,7 +41,7 @@ export function LastImportSummary() {
             .or('is_deleted.is.null,is_deleted.eq.false')
             .maybeSingle(),
           10000,
-          { data: null, error: { message: 'Request timed out', code: 'TIMEOUT' }, count: null, status: 408, statusText: 'Timeout' }
+          { data: null, error: { message: 'Request timed out', code: 'TIMEOUT' }, count: null, status: 408, statusText: 'Timeout' } as any
         );
         
         if (result.error) {
