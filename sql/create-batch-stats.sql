@@ -50,3 +50,4 @@ CREATE POLICY "Allow authenticated users to delete batch_stats"
   ON batch_stats FOR DELETE
   TO authenticated
   USING (true);
+

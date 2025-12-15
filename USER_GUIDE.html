@@ -463,7 +463,7 @@
             </div>
             <h1>SKG Payables Invoice Analytics</h1>
             <p class="subtitle">Comprehensive User Guide</p>
-            <p class="meta">Version 1.0 | December 2024 | Saskatchewan Health Authority (3sHealth)</p>
+            <p class="meta">Version 2.0 | December 15, 2024 | Saskatchewan Health Authority (3sHealth)</p>
         </header>
         
         <!-- Table of Contents -->
@@ -480,6 +480,7 @@
                 <a href="#export"><span class="toc-num">8</span> Exporting & Printing</a>
                 <a href="#tips"><span class="toc-num">9</span> Tips & Best Practices</a>
                 <a href="#glossary"><span class="toc-num">10</span> Glossary</a>
+                <a href="#calculations"><span class="toc-num">11</span> How Calculations Work</a>
             </div>
         </nav>
 
@@ -707,7 +708,46 @@
                 </tr>
             </table>
             
-            <h3>3.3 Interactive Charts</h3>
+            <h3>3.3 Backlog Trend Chart</h3>
+            <p>A line chart showing backlog trends across the last 5 import batches:</p>
+            <ul>
+                <li><strong>Orange Line:</strong> Shows backlog count over time</li>
+                <li><strong>Change Indicator:</strong> Green arrow down = improvement, Red = growth</li>
+                <li>Uses pre-calculated batch statistics for fast loading</li>
+                <li>Excludes deleted batches from the trend</li>
+            </ul>
+            
+            <div class="screenshot">
+                <div class="screenshot-icon">📸</div>
+                <div class="screenshot-title">Backlog Trend Chart</div>
+                <div class="screenshot-desc">screenshots/03d-trend-chart.png</div>
+            </div>
+            
+            <h3>3.4 Process State Trend Widgets</h3>
+            <p>A grid of mini-trend widgets showing the count trajectory for each workflow state:</p>
+            
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon blue">📈</div>
+                    <h4>Each Widget Shows:</h4>
+                </div>
+                <table>
+                    <tr><th>Element</th><th>Description</th></tr>
+                    <tr><td><strong>State Name</strong></td><td>Short name of the process state</td></tr>
+                    <tr><td><strong>Current Count</strong></td><td>Number of invoices currently in this state</td></tr>
+                    <tr><td><strong>Change Indicator</strong></td><td>Green ↓ = decrease (good), Red ↑ = increase</td></tr>
+                    <tr><td><strong>Sparkline</strong></td><td>Mini line chart showing trend across last 5 batches</td></tr>
+                </table>
+            </div>
+            
+            <div class="tip">
+                <span class="tip-icon">💡</span>
+                <div class="tip-content">
+                    <strong>Tip:</strong> Use these widgets to quickly identify which workflow states are improving vs. getting worse over time.
+                </div>
+            </div>
+            
+            <h3>3.5 Interactive Charts</h3>
             <p>All dashboard charts are interactive:</p>
             <ul>
                 <li><strong>Aging Distribution:</strong> Click any bar to see invoices in that age range</li>
@@ -963,9 +1003,9 @@
 
         <!-- Section 9: Tips -->
         <section id="tips">
-            <h2><span class="icon">💡</span> 9. Tips & Best Practices</h2>
+            <h2><span class="icon">💡</span> 10. Tips & Best Practices</h2>
             
-            <h3>9.1 Recommended Daily Workflow</h3>
+            <h3>10.1 Recommended Daily Workflow</h3>
             <div class="steps">
                 <div class="step">
                     <span class="step-num">1</span>
@@ -1025,11 +1065,11 @@
             </table>
         </section>
 
-        <!-- Section 10: Glossary -->
+        <!-- Section 11: Glossary -->
         <section id="glossary">
-            <h2><span class="icon">📖</span> 10. Glossary</h2>
+            <h2><span class="icon">📖</span> 11. Glossary</h2>
             
-            <h3>10.1 Key Terms</h3>
+            <h3>11.1 Key Terms</h3>
             <table>
                 <tr>
                     <th>Term</th>
@@ -1037,15 +1077,19 @@
                 </tr>
                 <tr>
                     <td><strong>Aging</strong></td>
-                    <td>Number of days since invoice date (calculated dynamically)</td>
+                    <td>Number of days since invoice date (calculated dynamically at query time)</td>
                 </tr>
                 <tr>
                     <td><strong>Backlog</strong></td>
-                    <td>Invoices not yet in "Ready for Payment" status</td>
+                    <td>Invoices not yet in "Ready for Payment" status - requires action</td>
                 </tr>
                 <tr>
                     <td><strong>Batch</strong></td>
                     <td>A single import of invoice data; the system tracks history</td>
+                </tr>
+                <tr>
+                    <td><strong>Batch Stats</strong></td>
+                    <td>Pre-calculated aggregate metrics stored per batch for fast dashboard loading</td>
                 </tr>
                 <tr>
                     <td><strong>Current Batch</strong></td>
@@ -1053,7 +1097,11 @@
                 </tr>
                 <tr>
                     <td><strong>Days Old</strong></td>
-                    <td>Calculated as: Current Date - Invoice Date</td>
+                    <td>Calculated dynamically as: Current Date - Invoice Date (always accurate)</td>
+                </tr>
+                <tr>
+                    <td><strong>Include in Analysis</strong></td>
+                    <td>Flag determining if an invoice contributes to dashboard statistics</td>
                 </tr>
                 <tr>
                     <td><strong>Outlier</strong></td>
@@ -1065,7 +1113,11 @@
                 </tr>
                 <tr>
                     <td><strong>Process State</strong></td>
-                    <td>Current workflow status of an invoice</td>
+                    <td>Current workflow status of an invoice (numbered 01-09)</td>
+                </tr>
+                <tr>
+                    <td><strong>Ready for Payment</strong></td>
+                    <td>Invoice in state "08" - no longer part of active backlog</td>
                 </tr>
             </table>
             
@@ -1087,7 +1139,7 @@
                 <tr><td>09</td><td>Fully Paid</td><td>Payment complete (filtered during import)</td></tr>
             </table>
             
-            <h3>10.3 Aging Bucket Colors</h3>
+            <h3>11.3 Aging Bucket Colors</h3>
             <table>
                 <tr>
                     <th>Age Range</th>
@@ -1102,11 +1154,109 @@
             </table>
         </section>
 
+        <!-- Section 11: How Calculations Work -->
+        <section id="calculations">
+            <h2><span class="icon">🧮</span> 11. How Calculations Work</h2>
+            
+            <h3>11.1 Days Old (Dynamic Calculation)</h3>
+            <p>Invoice age is calculated <strong>dynamically at query time</strong> rather than stored at import:</p>
+            
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon blue">📅</div>
+                    <h4>Formula: (Current Date - Invoice Date)</h4>
+                </div>
+                <ul>
+                    <li><strong>Benefit:</strong> Always accurate without needing to re-import data</li>
+                    <li><strong>Behavior:</strong> Future dates are treated as 0 days old</li>
+                    <li><strong>Source Field:</strong> Uses <code>invoice_date</code> (not creation_date)</li>
+                </ul>
+            </div>
+            
+            <h3>12.2 Backlog vs Total Invoices</h3>
+            <table>
+                <tr>
+                    <th>Metric</th>
+                    <th>Definition</th>
+                    <th>What It Includes</th>
+                </tr>
+                <tr>
+                    <td><strong>Total Invoices</strong></td>
+                    <td>All non-outlier invoices in current batch</td>
+                    <td>Everything except excluded outliers</td>
+                </tr>
+                <tr>
+                    <td><strong>Invoice Backlog</strong></td>
+                    <td>Total minus Ready for Payment</td>
+                    <td>Invoices still requiring attention</td>
+                </tr>
+                <tr>
+                    <td><strong>Ready for Payment</strong></td>
+                    <td>Process state "08"</td>
+                    <td>Invoices ready to be paid</td>
+                </tr>
+            </table>
+            
+            <div class="tip">
+                <span class="tip-icon">💡</span>
+                <div class="tip-content">
+                    <strong>Important:</strong> Aging calculations (average age, aging charts, vendor rankings) use <strong>backlog invoices only</strong> because "Ready for Payment" invoices no longer require action.
+                </div>
+            </div>
+            
+            <h3>11.3 Outlier Detection Rules</h3>
+            <table>
+                <tr>
+                    <th>Outlier Type</th>
+                    <th>Condition</th>
+                    <th>Default Behavior</th>
+                </tr>
+                <tr>
+                    <td><span class="badge badge-red">High Value</span></td>
+                    <td>Amount &gt; $100,000 AND process state = "01 - Header To Be Verified"</td>
+                    <td>Excluded from analysis</td>
+                </tr>
+                <tr>
+                    <td><span class="badge badge-purple">Negative</span></td>
+                    <td>Amount &lt; $0</td>
+                    <td>Excluded from analysis</td>
+                </tr>
+            </table>
+            
+            <h3>12.4 Ready for Payment Detection</h3>
+            <p>An invoice is considered "Ready for Payment" if its process state:</p>
+            <ul>
+                <li>Starts with "08", OR</li>
+                <li>Contains the text "ready for payment" (case-insensitive)</li>
+            </ul>
+            
+            <h3>11.5 Import Filtering Rules</h3>
+            <p>The following invoices are <strong>automatically excluded during import</strong>:</p>
+            <table>
+                <tr>
+                    <th>Filter</th>
+                    <th>Condition</th>
+                    <th>Reason</th>
+                </tr>
+                <tr>
+                    <td>Zero-value</td>
+                    <td>Invoice amount = $0</td>
+                    <td>No financial impact</td>
+                </tr>
+                <tr>
+                    <td>Fully Paid</td>
+                    <td>Process state starts with "09" or contains "Fully Paid"</td>
+                    <td>Already resolved</td>
+                </tr>
+            </table>
+        </section>
+
         <footer>
             <p>© 2024 Saskatchewan Health Authority (3sHealth). All rights reserved.</p>
-            <p>SKG Payables Invoice Analytics Dashboard - User Guide v1.0</p>
+            <p>SKG Payables Invoice Analytics Dashboard - User Guide v2.0</p>
         </footer>
     </div>
 </body>
 </html>
+
 

@@ -1,9 +1,36 @@
 # Product Requirements Document (PRD)
 # SKG Payables Invoice Analytics Dashboard
 
-**Version:** 1.0  
-**Last Updated:** December 2024  
-**Product Owner:** Saskatchewan Health Authority (3sHealth)
+**Version:** 2.0  
+**Last Updated:** December 15, 2024  
+**Product Owner:** Saskatchewan Health Authority (3sHealth)  
+**Status:** Production Ready
+
+---
+
+## Current Implementation Status
+
+### ✅ Completed Features (Phase 1)
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| User Authentication | ✅ Complete | Email/password via Supabase Auth |
+| CSV Data Import | ✅ Complete | Auto-detection of delimiters, ZIP support |
+| Dashboard Analytics | ✅ Complete | 5 stat cards, 7 chart widgets |
+| Invoice Browser | ✅ Complete | Filtering, sorting, pagination, detail modal |
+| Aging Analysis | ✅ Complete | Monthly buckets with drill-down |
+| Outlier Management | ✅ Complete | Include/exclude toggles, bulk actions |
+| Batch Comparison | ✅ Complete | New/resolved invoices, state changes |
+| Trend Analysis | ✅ Complete | Backlog trend chart, process state trend widgets |
+| Row-Level Security | ✅ Complete | User-scoped data access |
+| Performance Optimization | ✅ Complete | Pre-calculated batch stats, lazy loading |
+
+### 🔄 Recent Updates (December 2024)
+
+- **Dynamic Age Calculation**: Invoice age (`days_old`) is now calculated dynamically at query time based on current date vs invoice date, ensuring accuracy without re-importing data
+- **Process State Trend Widgets**: New dashboard component showing trends for each workflow state across imports
+- **Backlog-Focused Metrics**: Aging calculations now exclude "Ready for Payment" invoices to focus on actionable backlog
+- **Pre-calculated Batch Stats**: `batch_stats` table stores aggregated metrics per batch for faster dashboard loading
 
 ---
 
@@ -409,11 +436,235 @@ invoices
 - `idx_invoices_approver` on approver_id
 - `idx_import_batches_current` on is_current
 
+### 5.3 Batch Statistics Table
+Pre-calculated statistics for fast dashboard loading:
+```
+batch_stats
+├── id (UUID, PK)
+├── batch_id (UUID, FK → import_batches)
+├── total_invoices (INTEGER)
+├── total_value (NUMERIC)
+├── backlog_count (INTEGER)
+├── backlog_value (NUMERIC)
+├── ready_for_payment_count (INTEGER)
+├── ready_for_payment_value (NUMERIC)
+├── process_state_counts (JSONB) - e.g., {"01 - Header To Be Verified": {count: 1234, value: 5678.90}}
+└── calculated_at (TIMESTAMPTZ)
+```
+
 ---
 
-## 6. User Interface Design
+## 6. Invoice Calculations & Business Logic
 
-### 6.1 Design System
+### 6.1 Days Old Calculation
+Invoice age is calculated **dynamically at query time** to ensure accuracy without re-importing data:
+
+```typescript
+function calculateDaysOld(invoiceDateStr: string | null): number {
+  const invoiceDate = new Date(invoiceDateStr);
+  const today = new Date();
+  
+  // Reset time to midnight for accurate day calculation
+  today.setHours(0, 0, 0, 0);
+  invoiceDate.setHours(0, 0, 0, 0);
+  
+  const diffTime = today.getTime() - invoiceDate.getTime();
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  
+  return diffDays >= 0 ? diffDays : 0;
+}
+```
+
+**Key Behavior:**
+- Uses `invoice_date` field (not `creation_date`)
+- Always returns 0 or positive (future dates treated as 0)
+- Applied to all invoice queries via `applyDynamicDaysOldToAll()` helper
+
+### 6.2 Ready for Payment Detection
+Single source of truth for identifying invoices ready for payment:
+
+```typescript
+function isReadyForPayment(processState: string | null): boolean {
+  const state = processState?.trim() || '';
+  return state.startsWith('08') || state.toLowerCase().includes('ready for payment');
+}
+```
+
+### 6.3 Backlog vs Total Calculations
+
+| Metric | Definition | Used For |
+|--------|------------|----------|
+| **Total Invoices** | All non-outlier invoices in current batch | Summary statistics |
+| **Invoice Backlog** | Total invoices MINUS Ready for Payment | Backlog tracking, aging calculations |
+| **Ready for Payment** | Invoices with process state "08 - Ready for Payment" | Payment readiness tracking |
+
+**Important:** Aging calculations (average age, aging breakdowns, vendor rankings) use **backlog invoices only**, excluding "Ready for Payment" invoices since they no longer require action.
+
+### 6.4 Outlier Detection & Handling
+
+#### Detection Rules (Applied at Import Time)
+
+| Outlier Type | Condition | Default Behavior |
+|--------------|-----------|------------------|
+| **High Value** | Amount > $100,000 AND process state = "01 - Header To Be Verified" | Excluded from analysis |
+| **Negative** | Amount < $0 | Excluded from analysis |
+
+#### Include/Exclude Logic
+
+```typescript
+// For non-outliers: included by default (unless explicitly excluded)
+// For outliers: excluded by default (unless explicitly included)
+
+if (invoice.is_outlier === true) {
+  // Outliers require explicit inclusion
+  include = invoice.include_in_analysis === true;
+} else {
+  // Non-outliers included unless explicitly excluded
+  include = invoice.include_in_analysis !== false;
+}
+```
+
+### 6.5 Aging Bucket Definitions
+
+#### Dashboard Summary Buckets
+Used for the main aging distribution chart:
+
+| Bucket | Days Range | Color |
+|--------|------------|-------|
+| 0-30 | 0-29 days | Green |
+| 30-60 | 30-59 days | Light Orange |
+| 60-90 | 60-89 days | Orange |
+| 90-120 | 90-119 days | Dark Orange |
+| 120-180 | 120-179 days | Red |
+| 180-270 | 180-269 days | Dark Red |
+| 270+ | 270+ days | Deep Red |
+
+#### Monthly Aging Buckets
+Used for detailed aging breakdown (13 buckets):
+
+```typescript
+const monthlyBuckets = [
+  { min: 0, max: 30, label: '0-30 days' },
+  { min: 30, max: 60, label: '30-60 days' },
+  { min: 60, max: 90, label: '60-90 days' },
+  { min: 90, max: 120, label: '90-120 days' },
+  { min: 120, max: 150, label: '120-150 days' },
+  { min: 150, max: 180, label: '150-180 days' },
+  { min: 180, max: 210, label: '180-210 days' },
+  { min: 210, max: 240, label: '210-240 days' },
+  { min: 240, max: 270, label: '240-270 days' },
+  { min: 270, max: 300, label: '270-300 days' },
+  { min: 300, max: 330, label: '300-330 days' },
+  { min: 330, max: 360, label: '330-360 days' },
+  { min: 360, max: Infinity, label: '360+ days' },
+];
+```
+
+### 6.6 Import Filtering Rules
+
+The following invoices are **automatically excluded during import**:
+
+| Filter | Condition | Reason |
+|--------|-----------|--------|
+| Zero-value | `invoice_amount === 0` | No financial impact |
+| Fully Paid | Process state starts with "09" or contains "Fully Paid" | Already resolved |
+
+---
+
+## 7. Dashboard Widgets & Data Sources
+
+### 7.1 Summary Statistics Cards
+
+| Card | Metric | Calculation | Color |
+|------|--------|-------------|-------|
+| **Invoice Backlog** | Total - Ready for Payment | `totalInvoices - readyForPayment.count` | Orange |
+| **Total Invoices** | Count of included invoices | Direct count from filtered query | Sky Blue |
+| **Ready for Payment** | Process state "08" | Filter by `isReadyForPayment()` | Green |
+| **Requires Investigation** | Contains "Investigation" | Filter `overall_process_state.includes('Investigation')` | Red |
+| **Average Age** | Mean days old of backlog | `sum(days_old) / backlog_count` (excludes Ready for Payment) | Amber |
+
+### 7.2 Chart Widgets
+
+#### Batch Comparison Panel
+Compares current import batch against the previous import:
+- Net change in invoice count
+- New invoices (present in current, absent in previous)
+- Resolved invoices (present in previous, absent in current)
+- Value change summary
+- State-by-state changes sorted by process state number
+
+#### Backlog Trend Chart
+Line chart showing backlog count across the last 5 imports:
+- Uses pre-calculated `batch_stats.backlog_count`
+- Shows change indicator (green down arrow = improvement)
+- Excludes deleted batches
+
+#### Process State Trend Widgets
+Grid of mini-trend widgets for each workflow state:
+- Sparkline showing count trend across last 5 batches
+- Change indicator with color coding (green = decrease, red = increase)
+- Uses pre-calculated `batch_stats.process_state_counts`
+
+#### Aging Distribution Chart
+Horizontal bar chart showing invoice distribution by aging buckets:
+- Uses 7-bucket grouping (0-30 through 270+)
+- Toggle between Count and Value view
+- Color-coded by severity (green → red)
+- **Uses backlog invoices only** (excludes Ready for Payment)
+
+#### Monthly Aging Breakdown Chart
+Detailed bar chart with 30-day increments:
+- 13 buckets from 0-30 through 360+
+- Summary statistics for key ranges
+- Clickable buckets navigate to filtered invoice list
+- **Uses backlog invoices only**
+
+#### Process State Distribution Chart
+Horizontal bar chart by workflow state:
+- Sorted by process state number (01, 02, 03, etc.)
+- Shows count and value for each state
+- Clickable to filter invoice list
+
+#### PO vs Non-PO Breakdown
+Pie chart showing PO vs Non-PO distribution:
+- Normalizes values: "Yes" → "PO", everything else → "Non-PO"
+- Shows count and value for each category
+- **Uses backlog invoices only**
+
+#### Top Vendors Table
+List of top 10 vendors by invoice value:
+- Columns: Vendor Name, Invoice Count, Total Value
+- Sorted by total value (descending)
+- Clickable vendor names filter invoice list
+- **Uses backlog invoices only**
+
+### 7.3 Data Flow Architecture
+
+```
+CSV Upload → csv-parser.ts → Supabase invoices table
+                                      ↓
+                           batch_stats (pre-calculated)
+                                      ↓
+Dashboard ← useDashboardStats() ← applyDynamicDaysOldToAll()
+                                      ↓
+                              Widget Components
+```
+
+### 7.4 Performance Optimizations
+
+| Optimization | Implementation |
+|--------------|----------------|
+| Lazy Loading | TrendChart and ProcessStateTrendWidgets loaded with React.lazy() |
+| Pre-calculated Stats | `batch_stats` table stores aggregated metrics per batch |
+| Pagination | API queries limited to 1000 records per request |
+| Dynamic Age | Calculated client-side to avoid stale database values |
+| Timeout Protection | 10-15 second timeouts on database queries with fallbacks |
+
+---
+
+## 8. User Interface Design
+
+### 8.1 Design System
 
 #### Color Palette
 - **Primary:** Sky Blue (#0ea5e9)
@@ -435,13 +686,13 @@ invoices
 - **Tables:** Striped rows, hover states, sticky headers
 - **Modals:** Centered, backdrop blur, slide-in animation
 
-### 6.2 Navigation
+### 8.2 Navigation
 - Persistent sidebar navigation
 - Menu items: Dashboard, Invoices, Aging, Outliers, Import
 - Current page indicator
 - Collapsible on mobile
 
-### 6.3 Responsive Design
+### 8.3 Responsive Design
 - Mobile-first approach
 - Breakpoints: sm (640px), md (768px), lg (1024px), xl (1280px)
 - Stacked layouts on mobile, grid layouts on desktop
@@ -449,31 +700,31 @@ invoices
 
 ---
 
-## 7. Integration Points
+## 9. Integration Points
 
-### 7.1 Data Source
+### 9.1 Data Source
 - **Input:** CSV export from SKG Payables system
 - **Format:** Comma or tab-separated values
 - **Encoding:** UTF-8
 - **Date Format:** ISO 8601 (YYYY-MM-DD or with timezone)
 
-### 7.2 Authentication Provider
+### 9.2 Authentication Provider
 - Supabase Auth (email/password)
 - Future: SSO integration capability
 
-### 7.3 Deployment
+### 9.3 Deployment
 - Docker containerization
 - Nginx reverse proxy
 - Environment variables for configuration
 
 ---
 
-## 8. Future Enhancements (Roadmap)
+## 10. Future Enhancements (Roadmap)
 
-### Phase 2
+### Phase 2 (In Progress)
 - [ ] Email notifications for aging thresholds
 - [ ] Scheduled automatic imports
-- [ ] Custom dashboard widgets
+- [x] Custom dashboard widgets (Process State Trend Widgets completed)
 - [ ] User-configurable outlier thresholds
 
 ### Phase 3
@@ -490,7 +741,7 @@ invoices
 
 ---
 
-## 9. Success Metrics
+## 11. Success Metrics
 
 | Metric | Target |
 |--------|--------|
@@ -502,17 +753,22 @@ invoices
 
 ---
 
-## 10. Appendix
+## 12. Appendix
 
 ### A. Glossary
 
 | Term | Definition |
 |------|------------|
-| **Aging** | Number of days since invoice date |
-| **Outlier** | Invoice flagged for special handling (high value or negative) |
+| **Aging** | Number of days since invoice date (calculated dynamically) |
+| **Backlog** | Invoices that are NOT in "Ready for Payment" state - requires action |
 | **Batch** | A single import of invoice data |
-| **Process State** | Current workflow status of an invoice |
+| **Batch Stats** | Pre-calculated aggregate metrics stored per batch for performance |
+| **Days Old** | Age of invoice calculated as (current date - invoice_date) in days |
+| **Include in Analysis** | Flag determining if an invoice contributes to dashboard statistics |
+| **Outlier** | Invoice flagged for special handling (high value or negative) |
 | **PO** | Purchase Order |
+| **Process State** | Current workflow status of an invoice (01-09) |
+| **Ready for Payment** | Invoice in state "08" - no longer part of active backlog |
 
 ### B. Process State Reference
 
@@ -549,6 +805,7 @@ invoices
 ---
 
 *Document End*
+
 
 
 

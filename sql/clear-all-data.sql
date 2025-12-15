@@ -24,3 +24,4 @@ SELECT 'import_batches' as table_name, COUNT(*) as row_count FROM import_batches
 -- 1. Clear your browser cache (Ctrl+Shift+Delete)
 -- 2. Refresh the page
 -- 3. Import fresh data via the Import page
+

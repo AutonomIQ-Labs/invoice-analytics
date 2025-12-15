@@ -51,9 +51,6 @@ DROP POLICY IF EXISTS "Users can view own batches" ON import_batches;
 DROP POLICY IF EXISTS "Users can insert batches" ON import_batches;
 DROP POLICY IF EXISTS "Users can update own batches" ON import_batches;
 DROP POLICY IF EXISTS "Users can delete own batches" ON import_batches;
-DROP POLICY IF EXISTS "Admins can view all batches" ON import_batches;
-DROP POLICY IF EXISTS "Admins can update all batches" ON import_batches;
-DROP POLICY IF EXISTS "Admins can delete all batches" ON import_batches;
 
 -- Recreate with optimized auth function caching (ONE policy per action)
 CREATE POLICY "Authenticated users can view batches"
@@ -81,7 +78,6 @@ DROP POLICY IF EXISTS "Users can view invoices" ON invoices;
 DROP POLICY IF EXISTS "Users can insert invoices" ON invoices;
 DROP POLICY IF EXISTS "Users can update invoices" ON invoices;
 DROP POLICY IF EXISTS "Users can delete invoices" ON invoices;
-DROP POLICY IF EXISTS "Admins can delete invoices" ON invoices;
 DROP POLICY IF EXISTS "Authenticated users can view invoices" ON invoices;
 DROP POLICY IF EXISTS "Authenticated users can insert invoices" ON invoices;
 DROP POLICY IF EXISTS "Authenticated users can update invoices" ON invoices;
@@ -142,111 +138,7 @@ BEGIN
 END $$;
 
 -- ============================================
--- SECTION 5: Fix PROFILES Table Policies (if exists)
--- ============================================
-
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'profiles') THEN
-    DROP POLICY IF EXISTS "Users can read own profile" ON profiles;
-    DROP POLICY IF EXISTS "Admins can read all profiles" ON profiles;
-    DROP POLICY IF EXISTS "Admins can update all profiles" ON profiles;
-    DROP POLICY IF EXISTS "Admins can delete profiles" ON profiles;
-    
-    CREATE POLICY "Users can read own profile"
-      ON profiles FOR SELECT
-      USING ((select auth.uid()) = id);
-    
-    CREATE POLICY "Admins can read all profiles"
-      ON profiles FOR SELECT
-      USING (
-        EXISTS (
-          SELECT 1 FROM profiles
-          WHERE id = (select auth.uid()) AND role = 'admin'
-        )
-      );
-    
-    CREATE POLICY "Admins can update all profiles"
-      ON profiles FOR UPDATE
-      USING (
-        EXISTS (
-          SELECT 1 FROM profiles
-          WHERE id = (select auth.uid()) AND role = 'admin'
-        )
-      );
-    
-    CREATE POLICY "Admins can delete profiles"
-      ON profiles FOR DELETE
-      USING (
-        EXISTS (
-          SELECT 1 FROM profiles
-          WHERE id = (select auth.uid()) AND role = 'admin'
-        )
-        AND id != (select auth.uid())
-      );
-    
-    RAISE NOTICE 'Fixed RLS policies on profiles table';
-  ELSE
-    RAISE NOTICE 'Skipping profiles table - does not exist';
-  END IF;
-END $$;
-
--- ============================================
--- SECTION 6: Fix INVITATIONS Table Policies (if exists)
--- ============================================
-
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'invitations') THEN
-    DROP POLICY IF EXISTS "Admins can read invitations" ON invitations;
-    DROP POLICY IF EXISTS "Admins can create invitations" ON invitations;
-    DROP POLICY IF EXISTS "Admins can update invitations" ON invitations;
-    DROP POLICY IF EXISTS "Admins can delete invitations" ON invitations;
-    
-    CREATE POLICY "Admins can read invitations"
-      ON invitations FOR SELECT
-      USING (
-        EXISTS (
-          SELECT 1 FROM profiles
-          WHERE id = (select auth.uid()) AND role = 'admin'
-        )
-      );
-    
-    CREATE POLICY "Admins can create invitations"
-      ON invitations FOR INSERT
-      WITH CHECK (
-        EXISTS (
-          SELECT 1 FROM profiles
-          WHERE id = (select auth.uid()) AND role = 'admin'
-        )
-      );
-    
-    CREATE POLICY "Admins can update invitations"
-      ON invitations FOR UPDATE
-      USING (
-        EXISTS (
-          SELECT 1 FROM profiles
-          WHERE id = (select auth.uid()) AND role = 'admin'
-        )
-      );
-    
-    CREATE POLICY "Admins can delete invitations"
-      ON invitations FOR DELETE
-      USING (
-        EXISTS (
-          SELECT 1 FROM profiles
-          WHERE id = (select auth.uid()) AND role = 'admin'
-        )
-      );
-    
-    RAISE NOTICE 'Fixed RLS policies on invitations table';
-  ELSE
-    RAISE NOTICE 'Skipping invitations table - does not exist';
-  END IF;
-END $$;
-
--- ============================================
--- SECTION 7: Fix BATCH_STATS Table Policies (if exists)
+-- SECTION 5: Fix BATCH_STATS Table Policies (if exists)
 -- ============================================
 
 DO $$

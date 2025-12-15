@@ -1,9 +1,10 @@
 # 📊 SKG Payables Invoice Analytics Dashboard
 ## Comprehensive User Guide
 
-**Version:** 1.0  
-**Last Updated:** December 2024  
-**Product Owner:** Saskatchewan Health Authority (3sHealth)
+**Version:** 2.0  
+**Last Updated:** December 15, 2024  
+**Product Owner:** Saskatchewan Health Authority (3sHealth)  
+**Status:** Production Ready
 
 ---
 
@@ -17,9 +18,8 @@
 6. [Outlier Management](#6-outlier-management)
 7. [Importing Data](#7-importing-data)
 8. [Exporting & Printing Reports](#8-exporting--printing-reports)
-9. [Admin Dashboard](#9-admin-dashboard)
-10. [Tips & Best Practices](#10-tips--best-practices)
-11. [Glossary](#11-glossary)
+9. [Tips & Best Practices](#9-tips--best-practices)
+10. [Glossary](#10-glossary)
 
 ---
 
@@ -142,21 +142,48 @@ This panel compares your current import against the previous one, helping you un
 | **New Invoices** | Invoices that weren't in the previous batch |
 | **Status Changes** | How invoices moved between process states |
 
-### 3.4 Trend Chart
+### 3.4 Backlog Trend Chart
 
 ![Trend Chart](screenshots/03d-trend-chart.png)
-*Line chart showing invoice trends across multiple batches*
+*Line chart showing backlog trends across multiple batches*
 
-The trend chart displays:
-- Invoice counts across multiple import batches
-- Visual representation of backlog growth or reduction
-- Historical context for current numbers
+The **Backlog Trend** chart displays:
+- Backlog invoice counts across the last 5 import batches
+- Visual representation of backlog growth or reduction (orange line)
+- Change indicator showing improvement (green arrow down) or growth (red arrow down)
+
+**Key Features:**
+- Uses pre-calculated batch statistics for fast loading
+- Excludes deleted batches from the trend
+- Hover for detailed tooltips with batch information
 
 This helps you answer: "Is our backlog growing or shrinking over time?"
 
-### 3.5 Aging Distribution Chart
+### 3.5 Process State Trend Widgets
 
-![Aging Distribution](screenshots/03e-aging-distribution.png)
+![Process State Trends](screenshots/03e-process-state-trends.png)
+*Grid of mini-trend widgets for each workflow state*
+
+A new grid of **trend widgets** shows the count trajectory for each process state:
+
+| Widget Element | Description |
+|----------------|-------------|
+| **State Name** | Short name of the process state (e.g., "Header To Be Verified") |
+| **Current Count** | Number of invoices currently in this state |
+| **Change Indicator** | Green arrow down = decrease (good), Red arrow up = increase |
+| **Sparkline** | Mini line chart showing trend across last 5 batches |
+| **Color Dot** | Matches the state's color from the Process State chart |
+
+**How to Interpret:**
+- **Green change with down arrow**: The number of invoices in this state decreased (typically good - invoices are moving forward)
+- **Red change with up arrow**: The number increased (may indicate bottleneck)
+- **Gray zero**: No change between first and last batch
+
+> 💡 **Tip:** Use these widgets to identify which workflow states are improving vs. getting worse over time.
+
+### 3.6 Aging Distribution Chart
+
+![Aging Distribution](screenshots/03f-aging-distribution.png)
 *Bar chart showing invoice distribution by age category*
 
 A color-coded bar chart showing invoices grouped by age:
@@ -172,18 +199,18 @@ A color-coded bar chart showing invoices grouped by age:
 - Click **Count** to see number of invoices
 - Click **Value** to see dollar amounts
 
-### 3.6 Process State Distribution Chart
+### 3.7 Process State Distribution Chart
 
-![Process State Chart](screenshots/03f-process-state-chart.png)
+![Process State Chart](screenshots/03g-process-state-chart.png)
 *Horizontal bar chart showing invoices by workflow state*
 
 Shows how many invoices are in each workflow state, sorted by count.
 
 **Interactive feature:** Click any bar to navigate directly to the Invoices page filtered by that process state.
 
-### 3.7 Monthly Aging Breakdown
+### 3.8 Monthly Aging Breakdown
 
-![Monthly Aging](screenshots/03g-monthly-aging.png)
+![Monthly Aging](screenshots/03h-monthly-aging.png)
 *Detailed aging breakdown with 30-day bucket intervals*
 
 A more granular view breaking aging into 30-day buckets:
@@ -200,9 +227,9 @@ A more granular view breaking aging into 30-day buckets:
 
 **Interactive feature:** Click any bucket to drill down to those specific invoices in the Invoice Browser.
 
-### 3.8 PO vs Non-PO Breakdown
+### 3.9 PO vs Non-PO Breakdown
 
-![PO Breakdown](screenshots/03h-po-breakdown.png)
+![PO Breakdown](screenshots/03i-po-breakdown.png)
 *Pie chart showing Purchase Order vs Non-PO distribution*
 
 This pie chart visualizes:
@@ -211,10 +238,10 @@ This pie chart visualizes:
 
 **Interactive feature:** Click a pie segment to filter invoices by PO type.
 
-### 3.9 Top Vendors Table
+### 3.10 Top Vendors Table
 
-![Top Vendors](screenshots/03i-top-vendors.png)
-*Table listing the top 10 vendors by invoice count*
+![Top Vendors](screenshots/03j-top-vendors.png)
+*Table listing the top 10 vendors by invoice value*
 
 Displays the top 10 vendors with:
 - Vendor name
@@ -858,142 +885,7 @@ From the **Outliers** page:
 
 ---
 
-## 9. Admin Dashboard
-
-The Admin Dashboard is available only to users with **Administrator** privileges. It allows managing users, sending invitations, and administering application data.
-
-> 🔒 **Note:** The Admin menu item only appears in the sidebar if you are logged in as an administrator.
-
-### 9.1 Accessing the Admin Dashboard
-
-If you have admin privileges:
-1. Look for the **Admin** item in the sidebar navigation (with a shield icon)
-2. Click to access the Admin Dashboard
-3. The menu item displays a purple "Admin" badge
-
-### 9.2 User Management Tab
-
-The **Users** tab displays all registered users in the system.
-
-**User Table Columns:**
-| Column | Description |
-|--------|-------------|
-| **User** | Avatar, name, and email address |
-| **Role** | Administrator or User badge |
-| **Joined** | Registration date |
-| **Status** | Active or Pending first login |
-| **Actions** | Role toggle and delete buttons |
-
-**Available Actions:**
-- **Change Role**: Click the swap icon to toggle between Admin and User roles
-- **Delete User**: Remove a user from the system (cannot delete yourself)
-
-### 9.3 Adding New Users
-
-Click the **Add User** button to open the invitation modal. Two methods are available:
-
-#### Method 1: Send Email Invite
-
-Sends a magic link to the user's email. They will set their own password.
-
-1. Select **Send Email Invite** tab
-2. Enter the user's email address
-3. Select the role (User or Admin)
-4. Click **Send Invitation**
-5. The user receives an email with a login link
-
-#### Method 2: Create Account Directly
-
-Creates an account with a password you specify.
-
-1. Select **Create Account** tab
-2. Enter the user's email address
-3. Enter or generate a temporary password
-4. Select the role (User or Admin)
-5. Click **Create Account**
-6. Share the credentials with the user
-
-### 9.4 Password Requirements
-
-When creating accounts directly or when users sign up, passwords must meet these requirements:
-
-| Requirement | Details |
-|-------------|---------|
-| **Minimum Length** | 6 characters |
-| **Maximum Length** | No limit |
-| **Character Types** | Any characters allowed |
-
-**Generated Passwords:**
-
-When using the **Generate Password** button, the system creates a 12-character password using:
-
-| Character Type | Allowed Characters |
-|----------------|-------------------|
-| **Uppercase Letters** | A-Z (excluding I, O for clarity) |
-| **Lowercase Letters** | a-z (excluding i, l, o for clarity) |
-| **Numbers** | 2-9 (excluding 0, 1 for clarity) |
-| **Special Characters** | ! @ # $ % |
-
-> 💡 **Tip:** Generated passwords avoid ambiguous characters (0/O, 1/l/I) to prevent confusion when sharing credentials.
-
-### 9.5 Invitations Tab
-
-The **Invitations** tab shows pending email invitations that haven't been accepted yet.
-
-**Invitation Information:**
-- Email address invited
-- Role assigned (Admin or User)
-- Time remaining until expiration (7 days default)
-- Who sent the invitation
-- Date sent
-
-**Available Actions:**
-- **Resend**: Send the invitation email again and reset expiration
-- **Revoke**: Cancel the pending invitation
-
-**Statistics Display:**
-- Total pending invitations
-- Active (not expired)
-- Expired invitations
-
-### 9.6 Data Management Tab
-
-The **Data Management** tab provides administrative control over all imported data.
-
-**Statistics Cards:**
-| Card | Description |
-|------|-------------|
-| **Import Batches** | Total number of import batches in the system |
-| **Total Invoices** | Combined count of all invoices |
-| **Registered Users** | Number of user accounts |
-
-**Batch Management Table:**
-| Column | Description |
-|--------|-------------|
-| **File** | Original filename uploaded |
-| **Imported By** | User who performed the import |
-| **Records** | Number of invoices in the batch |
-| **Date** | When the import occurred |
-| **Status** | Current or Historical |
-| **Actions** | Delete button |
-
-**Deleting Batches:**
-1. Click the delete icon on any batch
-2. Confirm the deletion
-3. All invoices in that batch are permanently removed
-
-> ⚠️ **Warning:** Batch deletion is permanent and removes all associated invoice data.
-
-### 9.7 User Roles
-
-| Role | Capabilities |
-|------|--------------|
-| **User** | View dashboard, browse invoices, import data, manage outliers |
-| **Administrator** | All User capabilities + manage users, invitations, and all data |
-
----
-
-## 10. Tips & Best Practices
+## 9. Tips & Best Practices
 
 ### 10.1 Recommended Daily Workflow
 
@@ -1003,7 +895,7 @@ The **Data Management** tab provides administrative control over all imported da
 4. **Analyze Aging** to identify oldest invoices
 5. **Export reports** for team meetings or audits
 
-### 10.2 Efficient Navigation Tips
+### 9.2 Efficient Navigation Tips
 
 | Action | How |
 |--------|-----|
@@ -1012,7 +904,7 @@ The **Data Management** tab provides administrative control over all imported da
 | **Bookmark filters** | URLs contain filter parameters - bookmark for quick access |
 | **Close modals** | Press Escape key or click outside |
 
-### 10.3 Data Accuracy Tips
+### 9.3 Data Accuracy Tips
 
 - **Import regularly**: Daily imports ensure trending is accurate
 - **Review outliers first**: High-value items can skew averages significantly
@@ -1026,7 +918,7 @@ The **Data Management** tab provides administrative control over all imported da
 - **Limit print scope**: Print reports work best under 500 records
 - **Delete old batches**: Remove unneeded historical batches
 
-### 10.5 Keyboard Shortcuts
+### 9.5 Keyboard Shortcuts
 
 | Key | Action |
 |-----|--------|
@@ -1036,22 +928,51 @@ The **Data Management** tab provides administrative control over all imported da
 
 ---
 
-## 11. Glossary
+## 10. Glossary
 
-### 11.1 Key Terms
+### 10.1 Key Terms
 
 | Term | Definition |
 |------|------------|
-| **Aging** | Number of days since invoice date (calculated dynamically) |
-| **Backlog** | Invoices not yet in "Ready for Payment" status |
+| **Aging** | Number of days since invoice date (calculated dynamically at query time) |
+| **Backlog** | Invoices not yet in "Ready for Payment" status - requires action |
 | **Batch** | A single import of invoice data; the system tracks history |
+| **Batch Stats** | Pre-calculated aggregate metrics stored per batch for fast dashboard loading |
 | **Current Batch** | The active data source for all analytics |
-| **Days Old** | Calculated as: Current Date - Invoice Date |
+| **Days Old** | Calculated dynamically as: Current Date - Invoice Date (always accurate) |
+| **Include in Analysis** | Flag determining if an invoice contributes to dashboard statistics |
 | **Outlier** | Invoice flagged for special handling due to high value or negative amount |
 | **PO** | Purchase Order |
-| **Process State** | Current workflow status of an invoice |
+| **Process State** | Current workflow status of an invoice (numbered 01-09) |
+| **Ready for Payment** | Invoice in state "08" - no longer part of active backlog |
 
-### 11.2 Process State Reference
+### 11.2 How Invoice Calculations Work
+
+#### Days Old (Dynamic Calculation)
+Invoice age is calculated **dynamically at query time** rather than stored at import:
+
+- **Formula**: `(Current Date - Invoice Date)` in days
+- **Benefit**: Always accurate without needing to re-import data
+- **Behavior**: Future dates are treated as 0 days old
+
+#### Backlog vs Total
+
+| Metric | Definition | What It Includes |
+|--------|------------|------------------|
+| **Total Invoices** | All non-outlier invoices in current batch | Everything except excluded outliers |
+| **Invoice Backlog** | Total minus Ready for Payment | Invoices still requiring attention |
+| **Ready for Payment** | Process state "08" | Invoices ready to be paid |
+
+> 💡 **Important**: Aging calculations (average age, aging charts, vendor rankings) use **backlog invoices only** because "Ready for Payment" invoices no longer require action.
+
+#### Outlier Detection Rules
+
+| Outlier Type | Condition | Default Behavior |
+|--------------|-----------|------------------|
+| **High Value** | Amount > $100,000 AND process state = "01 - Header To Be Verified" | Excluded from analysis |
+| **Negative** | Amount < $0 | Excluded from analysis |
+
+### 10.3 Process State Reference
 
 | Code | Status | Description |
 |------|--------|-------------|
@@ -1065,7 +986,7 @@ The **Data Management** tab provides administrative control over all imported da
 | 08 | Ready for Payment | Approved and ready to pay |
 | 09 | Fully Paid | Payment complete (filtered during import) |
 
-### 10.3 Aging Bucket Definitions
+### 11.4 Aging Bucket Definitions
 
 | Bucket | Days Range | Severity Level | Dashboard Color |
 |--------|------------|----------------|-----------------|
@@ -1083,7 +1004,7 @@ The **Data Management** tab provides administrative control over all imported da
 | 330-360 | 330-359 days | Extreme | 🟢 Lime |
 | 360+ | 360+ days | Maximum | ❌ Dark Red |
 
-### 11.4 Outlier Thresholds
+### 10.5 Outlier Thresholds
 
 | Outlier Type | Criteria | Rationale |
 |--------------|----------|-----------|
@@ -1105,12 +1026,13 @@ To complete this guide with actual screenshots, capture the following:
 - [ ] `03a-data-source.png` - Data source indicator
 - [ ] `03b-kpi-cards.png` - KPI statistics cards
 - [ ] `03c-batch-comparison.png` - Batch comparison panel
-- [ ] `03d-trend-chart.png` - Trend chart
-- [ ] `03e-aging-distribution.png` - Aging bar chart
-- [ ] `03f-process-state-chart.png` - Process state chart
-- [ ] `03g-monthly-aging.png` - Monthly aging breakdown
-- [ ] `03h-po-breakdown.png` - PO vs Non-PO pie chart
-- [ ] `03i-top-vendors.png` - Top vendors table
+- [ ] `03d-trend-chart.png` - Backlog trend chart
+- [ ] `03e-process-state-trends.png` - Process state trend widgets
+- [ ] `03f-aging-distribution.png` - Aging bar chart
+- [ ] `03g-process-state-chart.png` - Process state chart
+- [ ] `03h-monthly-aging.png` - Monthly aging breakdown
+- [ ] `03i-po-breakdown.png` - PO vs Non-PO pie chart
+- [ ] `03j-top-vendors.png` - Top vendors table
 
 ### Invoice Browser
 - [ ] `04-invoice-browser.png` - Full page
@@ -1161,11 +1083,11 @@ To complete this guide with actual screenshots, capture the following:
 
 ## Need Help?
 
-For technical support or feature requests, contact your system administrator or the 3sHealth IT department.
+For technical support or feature requests, contact the 3sHealth IT department.
 
 ---
 
 *© 2024 Saskatchewan Health Authority (3sHealth). All rights reserved.*
 
-*This document was generated for the SKG Payables Invoice Analytics Dashboard application.*
+*SKG Payables Invoice Analytics Dashboard - User Guide v2.0*
 

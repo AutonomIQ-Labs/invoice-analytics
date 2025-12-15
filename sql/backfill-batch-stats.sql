@@ -96,3 +96,4 @@ SELECT
 FROM batch_stats bs
 JOIN import_batches ib ON ib.id = bs.batch_id
 ORDER BY ib.imported_at DESC;
+

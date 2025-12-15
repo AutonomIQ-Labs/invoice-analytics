@@ -292,3 +292,4 @@ function TrendWidget({ trend }: TrendWidgetProps) {
     </div>
   );
 }
+
